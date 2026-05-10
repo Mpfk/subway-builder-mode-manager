@@ -540,18 +540,18 @@
                 committedEntries.map(function (entry) {
                     return h('div', { key: entry.id, style: STYLES.row },
                         h('div', null,
-                            h('div', { style: STYLES.modeName }, entry.def ? entry.def.name : entry.id),
-                            entry.locked
-                                ? h('div', { style: Object.assign({}, STYLES.modeSubtitle, { color: '#f59e0b' }) }, '🔒 In use — cannot remove')
-                                : null
+                            h('div', { style: STYLES.modeName }, entry.def ? entry.def.name : entry.id)
                         ),
-                        !entry.locked
-                            ? h('button', {
+                        entry.locked
+                            ? h('span', {
+                                title: 'Locked to prevent breaking game save',
+                                style: Object.assign({}, STYLES.iconBtn, { color: '#f59e0b', cursor: 'default' })
+                              }, '🔒')
+                            : h('button', {
                                 title: 'Remove from this game',
                                 onClick: function () { handleRemoveCommitted(entry.id); },
                                 style: Object.assign({}, STYLES.iconBtn, { color: '#ef4444' })
                               }, '✕')
-                            : null
                     );
                 })
               );
