@@ -247,11 +247,11 @@
             });
         },
 
-        lockAll: function () {
+        lockUsed: function (usedIds) {
             return storage.get('modes-committed', []).then(function (committed) {
                 var list = Array.isArray(committed) ? committed : [];
                 return storage.set('modes-committed', list.map(function (c) {
-                    return Object.assign({}, c, { locked: true });
+                    return Object.assign({}, c, { locked: !!usedIds[c.id] });
                 }));
             });
         },
@@ -556,27 +556,33 @@
     }
 
     // ─── INIT ────────────────────────────────────────────────────────────────────
-    // onGameInit callback is synchronous. The toolbar panel is registered first so
-    // it always appears. Mode registration runs asynchronously afterward and does
-    // not block panel visibility.
+    // onGameInit fires on every game load (new game + save loads). The panel must
+    // only be registered once per mod lifecycle — a flag prevents duplicates.
+    // Mode registration and lock-state refresh run async on every load.
+
+    var panelRegistered = false;
 
     api.hooks.onGameInit(function () {
         try {
-            // Register the panel immediately — synchronous, always runs regardless
-            // of whether storage or train registration succeeds.
-            api.ui.addToolbarPanel({
-                id: 'mode-manager',
-                icon: 'TrainTrack',
-                tooltip: 'Open Mode Manager',
-                title: 'Mode Manager',
-                width: 320,
-                render: function () {
-                    return api.utils.React.createElement(ModeManagerPanel, null);
-                }
-            });
+            // Register the panel once — addToolbarPanel appends a new button each
+            // call, so calling it on every game load produces duplicate buttons.
+            if (!panelRegistered) {
+                api.ui.addToolbarPanel({
+                    id: 'mode-manager',
+                    icon: 'TrainTrack',
+                    tooltip: 'Open Mode Manager',
+                    title: 'Mode Manager',
+                    width: 320,
+                    render: function () {
+                        return api.utils.React.createElement(ModeManagerPanel, null);
+                    }
+                });
+                panelRegistered = true;
+            }
 
-            // Async: register committed train types. Failures are logged and
-            // surfaced via notification but do not affect panel availability.
+            // Async: register committed train types then refresh lock state.
+            // Lock state is derived from actual routes in the current save via
+            // api.gameState.getRoutes() — only modes with existing routes are locked.
             Promise.all([registry.getLibrary(), registry.getCommitted()])
                 .then(function (results) {
                     var library   = results[0];
@@ -592,7 +598,6 @@
                             console.warn('[Mode Manager] Committed mode "' + entry.id + '" not in library — skipping');
                             return;
                         }
-                        // Strip metadata fields before passing to the game API
                         var trainConfig = Object.assign({}, def);
                         delete trainConfig.source;
                         delete trainConfig.version;
@@ -604,7 +609,23 @@
                         }
                     });
 
-                    return registry.lockAll().then(function () { return registered; });
+                    // Determine which committed modes are actually in use by
+                    // inspecting live routes. Only lock modes that have routes.
+                    var usedIds = {};
+                    try {
+                        var routes = api.gameState.getRoutes();
+                        if (Array.isArray(routes)) {
+                            routes.forEach(function (route) {
+                                var typeId = route.trainTypeId || route.trainType || route.type;
+                                if (typeId) usedIds[typeId] = true;
+                            });
+                        }
+                        console.log('[Mode Manager] Train types with routes:', Object.keys(usedIds));
+                    } catch (routeErr) {
+                        console.warn('[Mode Manager] Could not query routes for lock check:', routeErr);
+                    }
+
+                    return registry.lockUsed(usedIds).then(function () { return registered; });
                 })
                 .then(function (registered) {
                     var msg = 'Mode Manager active';
