@@ -50,7 +50,8 @@
             },
             compatibleTrackTypes: ['tram'],
             appearance: { color: '#f59e0b' },
-            allowAtGradeRoadCrossing: true
+            allowAtGradeRoadCrossing: true,
+            tags: []
         },
         {
             id: 'brt',
@@ -80,7 +81,8 @@
             },
             compatibleTrackTypes: ['brt'],
             appearance: { color: '#ef4444' },
-            allowAtGradeRoadCrossing: true
+            allowAtGradeRoadCrossing: true,
+            tags: ['bus']
         },
         {
             id: 'monorail',
@@ -110,7 +112,8 @@
             },
             compatibleTrackTypes: ['monorail'],
             appearance: { color: '#8b5cf6' },
-            allowAtGradeRoadCrossing: false
+            allowAtGradeRoadCrossing: false,
+            tags: []
         },
         {
             id: 'people-mover',
@@ -140,7 +143,8 @@
             },
             compatibleTrackTypes: ['people-mover'],
             appearance: { color: '#3b82f6' },
-            allowAtGradeRoadCrossing: false
+            allowAtGradeRoadCrossing: false,
+            tags: []
         }
     ];
 
@@ -312,6 +316,9 @@
             var missingStats = REQUIRED_STATS.filter(function (s) { return typeof def.stats[s] !== 'number'; });
             if (missingStats.length) {
                 return { error: 'Missing or non-numeric stats: ' + missingStats.join(', ') + '.' };
+            }
+            if ('tags' in def && (!Array.isArray(def.tags) || def.tags.some(function (t) { return typeof t !== 'string'; }))) {
+                return { error: '"tags" must be an array of strings.' };
             }
 
             return { def: def };
@@ -633,6 +640,7 @@
                         var trainConfig = Object.assign({}, def);
                         delete trainConfig.source;
                         delete trainConfig.version;
+                        delete trainConfig.tags;
                         try {
                             api.trains.registerTrainType(trainConfig);
                             registered++;
