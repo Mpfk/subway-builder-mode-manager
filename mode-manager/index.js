@@ -541,9 +541,9 @@
                     return h('div', { key: entry.id, style: STYLES.row },
                         h('div', null,
                             h('div', { style: STYLES.modeName }, entry.def ? entry.def.name : entry.id),
-                            h('div', { style: Object.assign({}, STYLES.modeSubtitle, { color: entry.locked ? '#f59e0b' : '#34d399' }) },
-                                entry.locked ? '🔒 In use — cannot remove' : 'Pending next load'
-                            )
+                            entry.locked
+                                ? h('div', { style: Object.assign({}, STYLES.modeSubtitle, { color: '#f59e0b' }) }, '🔒 In use — cannot remove')
+                                : null
                         ),
                         !entry.locked
                             ? h('button', {
