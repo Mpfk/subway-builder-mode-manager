@@ -144,64 +144,91 @@
         'scissorsCrossoverCost'
     ];
 
+    // ─── STORAGE ─────────────────────────────────────────────────────────────────
+    // Use api.storage when available. Fall back to an in-memory store so the rest
+    // of the mod works (without persistence) if the API surface is missing.
+
+    var storage = (function () {
+        if (api.storage && typeof api.storage.get === 'function') {
+            return api.storage;
+        }
+        console.warn('[Mode Manager] api.storage unavailable — falling back to in-memory store (state will not persist)');
+        var mem = {};
+        return {
+            get: function (key, defaultValue) {
+                return Promise.resolve(key in mem ? mem[key] : defaultValue);
+            },
+            set: function (key, value) {
+                mem[key] = value;
+                return Promise.resolve();
+            },
+            delete: function (key) {
+                delete mem[key];
+                return Promise.resolve();
+            },
+            keys: function () {
+                return Promise.resolve(Object.keys(mem));
+            }
+        };
+    })();
+
     // ─── REGISTRY ────────────────────────────────────────────────────────────────
-    //
     // Storage keys (auto-namespaced by mod ID via api.storage):
-    //   modes-imported   → ModeDefinition[]   global imported mode library
-    //   modes-committed  → { id, locked }[]   modes added to any game save
-    //
-    // "locked" becomes true after a mode's first onGameInit registration,
-    // meaning it may have been placed and cannot safely be removed.
+    //   modes-imported   → ModeDefinition[]      global user-imported library
+    //   modes-committed  → { id, locked }[]      modes added to this game
 
-    const storage = api.storage;
-
-    const registry = {
-        async getLibrary() {
-            const imported = await storage.get('modes-imported', []);
-            return [...BUILTINS, ...imported];
+    var registry = {
+        getLibrary: function () {
+            return storage.get('modes-imported', []).then(function (imported) {
+                return BUILTINS.concat(imported);
+            });
         },
 
-        async addImported(def) {
-            const imported = await storage.get('modes-imported', []);
-            imported.push({ ...def, source: 'imported' });
-            await storage.set('modes-imported', imported);
+        addImported: function (def) {
+            return storage.get('modes-imported', []).then(function (imported) {
+                imported.push(Object.assign({}, def, { source: 'imported' }));
+                return storage.set('modes-imported', imported);
+            });
         },
 
-        async removeImported(id) {
-            const imported = await storage.get('modes-imported', []);
-            await storage.set('modes-imported', imported.filter(m => m.id !== id));
+        removeImported: function (id) {
+            return storage.get('modes-imported', []).then(function (imported) {
+                return storage.set('modes-imported', imported.filter(function (m) { return m.id !== id; }));
+            });
         },
 
-        async getCommitted() {
+        getCommitted: function () {
             return storage.get('modes-committed', []);
         },
 
-        async commitMode(id) {
-            const committed = await storage.get('modes-committed', []);
-            if (!committed.find(c => c.id === id)) {
-                committed.push({ id, locked: false });
-                await storage.set('modes-committed', committed);
-            }
+        commitMode: function (id) {
+            return storage.get('modes-committed', []).then(function (committed) {
+                if (!committed.find(function (c) { return c.id === id; })) {
+                    committed.push({ id: id, locked: false });
+                    return storage.set('modes-committed', committed);
+                }
+            });
         },
 
-        async removeCommitted(id) {
-            const committed = await storage.get('modes-committed', []);
-            const entry = committed.find(c => c.id === id);
-            if (entry && !entry.locked) {
-                await storage.set('modes-committed', committed.filter(c => c.id !== id));
-            }
+        removeCommitted: function (id) {
+            return storage.get('modes-committed', []).then(function (committed) {
+                var entry = committed.find(function (c) { return c.id === id; });
+                if (entry && !entry.locked) {
+                    return storage.set('modes-committed', committed.filter(function (c) { return c.id !== id; }));
+                }
+            });
         },
 
-        // Called during onGameInit after registering all committed modes.
-        // Marks every committed entry as locked — they have now been registered
-        // and may have been placed in the game world.
-        async lockAll() {
-            const committed = await storage.get('modes-committed', []);
-            await storage.set('modes-committed', committed.map(c => ({ ...c, locked: true })));
+        lockAll: function () {
+            return storage.get('modes-committed', []).then(function (committed) {
+                return storage.set('modes-committed', committed.map(function (c) {
+                    return Object.assign({}, c, { locked: true });
+                }));
+            });
         },
 
-        validateImport(jsonText) {
-            let def;
+        validateImport: function (jsonText) {
+            var def;
             try {
                 def = JSON.parse(jsonText);
             } catch (e) {
@@ -212,12 +239,11 @@
                 return { error: 'Definition must be a JSON object.' };
             }
 
-            const missingTop = ['id', 'name', 'description', 'stats', 'compatibleTrackTypes', 'appearance']
-                .filter(f => !(f in def));
+            var missingTop = ['id', 'name', 'description', 'stats', 'compatibleTrackTypes', 'appearance']
+                .filter(function (f) { return !(f in def); });
             if (missingTop.length) {
                 return { error: 'Missing required fields: ' + missingTop.join(', ') + '.' };
             }
-
             if (typeof def.id !== 'string' || !def.id.trim()) {
                 return { error: '"id" must be a non-empty string.' };
             }
@@ -236,256 +262,337 @@
             if (typeof def.stats !== 'object' || !def.stats) {
                 return { error: '"stats" must be an object.' };
             }
-
-            const missingStats = REQUIRED_STATS.filter(s => typeof def.stats[s] !== 'number');
+            var missingStats = REQUIRED_STATS.filter(function (s) { return typeof def.stats[s] !== 'number'; });
             if (missingStats.length) {
                 return { error: 'Missing or non-numeric stats: ' + missingStats.join(', ') + '.' };
             }
 
-            return { def };
+            return { def: def };
         }
     };
 
     // ─── UI ──────────────────────────────────────────────────────────────────────
-    // React is accessed lazily inside ModeManagerPanel (not at module load time)
-    // because api.utils may not be populated until after onGameInit fires.
+    // All React access is deferred to render time via api.utils.React so that
+    // module-level code never touches the React object before onGameInit fires.
 
-    const STYLES = {
-        root:       { padding: '12px 16px', color: '#f9fafb', fontFamily: 'inherit' },
-        tabBar:     { display: 'flex', borderBottom: '1px solid #374151', marginBottom: '12px' },
-        tab:        { flex: 1, padding: '8px', background: 'none', border: 'none',
-                      cursor: 'pointer', fontSize: '13px' },
-        tabActive:  { borderBottom: '2px solid #60a5fa', color: '#60a5fa' },
-        tabInactive:{ borderBottom: '2px solid transparent', color: '#6b7280' },
-        row:        { display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '8px 0', borderBottom: '1px solid #1f2937' },
-        modeName:   { color: '#f9fafb', fontSize: '13px', fontWeight: '500' },
+    var STYLES = {
+        root:         { padding: '12px 16px', color: '#f9fafb', fontFamily: 'inherit' },
+        tabBar:       { display: 'flex', borderBottom: '1px solid #374151', marginBottom: '12px' },
+        tab:          { flex: 1, padding: '8px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px' },
+        tabActive:    { borderBottom: '2px solid #60a5fa', color: '#60a5fa' },
+        tabInactive:  { borderBottom: '2px solid transparent', color: '#6b7280' },
+        row:          { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #1f2937' },
+        modeName:     { color: '#f9fafb', fontSize: '13px', fontWeight: '500' },
         modeSubtitle: { fontSize: '11px', marginTop: '2px' },
-        sectionLabel: { color: '#6b7280', fontSize: '11px', marginBottom: '6px',
-                        textTransform: 'uppercase', letterSpacing: '0.05em' },
-        divider:    { borderTop: '1px solid #374151', paddingTop: '12px', marginTop: '4px' },
-        iconBtn:    { background: 'none', border: 'none', cursor: 'pointer', fontSize: '15px', padding: '0 4px' },
-        addBtn:     { padding: '4px 10px', border: 'none', borderRadius: '4px',
-                      color: '#fff', cursor: 'pointer', fontSize: '11px', background: '#1d4ed8' },
-        importBtn:  { marginTop: '6px', padding: '6px 12px', border: 'none',
-                      borderRadius: '4px', fontSize: '12px' },
-        textarea:   { width: '100%', height: '80px', background: '#111827',
-                      border: '1px solid #374151', borderRadius: '4px', color: '#f9fafb',
-                      padding: '6px', fontSize: '11px', fontFamily: 'monospace',
-                      resize: 'vertical', boxSizing: 'border-box' },
-        error:      { color: '#ef4444', fontSize: '11px', margin: '4px 0' },
-        notice:     { marginTop: '12px', padding: '8px', background: '#1f2937',
-                      borderRadius: '4px', color: '#f59e0b', fontSize: '11px' },
-        empty:      { color: '#6b7280', fontSize: '12px', padding: '8px 0' }
+        sectionLabel: { color: '#6b7280', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' },
+        divider:      { borderTop: '1px solid #374151', paddingTop: '12px', marginTop: '4px' },
+        iconBtn:      { background: 'none', border: 'none', cursor: 'pointer', fontSize: '15px', padding: '0 4px' },
+        addBtn:       { padding: '4px 10px', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '11px', background: '#1d4ed8' },
+        importBtn:    { marginTop: '6px', padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '12px' },
+        textarea:     { width: '100%', height: '80px', background: '#111827', border: '1px solid #374151', borderRadius: '4px', color: '#f9fafb', padding: '6px', fontSize: '11px', fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box' },
+        errorBox:     { color: '#ef4444', fontSize: '11px', margin: '4px 0' },
+        warnBox:      { padding: '8px', background: '#1f2937', borderRadius: '4px', color: '#f59e0b', fontSize: '11px', marginBottom: '8px' },
+        notice:       { marginTop: '12px', padding: '8px', background: '#1f2937', borderRadius: '4px', color: '#f59e0b', fontSize: '11px' },
+        empty:        { color: '#6b7280', fontSize: '12px', padding: '8px 0' }
     };
 
     function ModeManagerPanel() {
-        const { createElement: h, useState, useEffect } = api.utils.React;
+        var React = api.utils.React;
+        var h = React.createElement;
 
-        if (typeof useState !== 'function' || typeof useEffect !== 'function') {
+        // Guard: hooks required
+        if (typeof React.useState !== 'function' || typeof React.useEffect !== 'function') {
             return h('div', { style: STYLES.root },
-                h('p', { style: { color: '#ef4444', fontSize: '13px' } },
-                    'Mode Manager requires React 16.8+. Please update Subway Builder.')
+                h('p', { style: STYLES.errorBox }, 'Mode Manager requires React 16.8+. Please update Subway Builder.')
             );
         }
 
-        const [tab, setTab]             = useState('library');
-        const [library, setLibrary]     = useState(null);
-        const [committed, setCommitted] = useState(null);
-        const [importText, setImportText] = useState('');
-        const [importError, setImportError] = useState('');
-        const [dirty, setDirty]         = useState(false);
+        var useState   = React.useState;
+        var useEffect  = React.useEffect;
+
+        var tabState         = useState('library');
+        var libraryState     = useState(null);
+        var committedState   = useState(null);
+        var loadErrorState   = useState(null);
+        var importTextState  = useState('');
+        var importErrorState = useState('');
+        var actionErrorState = useState(null);
+        var dirtyState       = useState(false);
+
+        var tab         = tabState[0];         var setTab         = tabState[1];
+        var library     = libraryState[0];     var setLibrary     = libraryState[1];
+        var committed   = committedState[0];   var setCommitted   = committedState[1];
+        var loadError   = loadErrorState[0];   var setLoadError   = loadErrorState[1];
+        var importText  = importTextState[0];  var setImportText  = importTextState[1];
+        var importError = importErrorState[0]; var setImportError = importErrorState[1];
+        var actionError = actionErrorState[0]; var setActionError = actionErrorState[1];
+        var dirty       = dirtyState[0];       var setDirty       = dirtyState[1];
 
         function reload() {
+            setLoadError(null);
             Promise.all([registry.getLibrary(), registry.getCommitted()])
-                .then(([lib, comm]) => { setLibrary(lib); setCommitted(comm); });
+                .then(function (results) {
+                    setLibrary(results[0]);
+                    setCommitted(results[1]);
+                })
+                .catch(function (err) {
+                    console.error('[Mode Manager] Failed to load panel data:', err);
+                    setLibrary(BUILTINS);
+                    setCommitted([]);
+                    setLoadError('Storage unavailable — showing defaults. Changes will not persist.');
+                });
         }
 
-        useEffect(() => { reload(); }, []);
+        useEffect(function () { reload(); }, []);
 
+        // Loading state
         if (!library || !committed) {
-            return h('div', { style: { ...STYLES.root, color: '#6b7280' } }, 'Loading...');
+            return h('div', { style: Object.assign({}, STYLES.root, { color: '#6b7280' }) }, 'Loading...');
         }
 
-        const committedIds = new Set(committed.map(c => c.id));
+        var committedIds = {};
+        committed.forEach(function (c) { committedIds[c.id] = true; });
 
         function handleCommit(id) {
-            registry.commitMode(id).then(() => { reload(); setDirty(true); });
+            setActionError(null);
+            registry.commitMode(id)
+                .then(function () { reload(); setDirty(true); })
+                .catch(function (err) {
+                    console.error('[Mode Manager] commitMode failed:', err);
+                    setActionError('Failed to save — ' + err.message);
+                });
         }
 
         function handleRemoveCommitted(id) {
-            registry.removeCommitted(id).then(() => { reload(); setDirty(true); });
+            setActionError(null);
+            registry.removeCommitted(id)
+                .then(function () { reload(); setDirty(true); })
+                .catch(function (err) {
+                    console.error('[Mode Manager] removeCommitted failed:', err);
+                    setActionError('Failed to remove — ' + err.message);
+                });
         }
 
         function handleRemoveImported(id) {
-            registry.removeImported(id).then(reload);
+            setActionError(null);
+            registry.removeImported(id)
+                .then(reload)
+                .catch(function (err) {
+                    console.error('[Mode Manager] removeImported failed:', err);
+                    setActionError('Failed to remove — ' + err.message);
+                });
         }
 
         function handleImport() {
-            const result = registry.validateImport(importText);
+            var result = registry.validateImport(importText);
             if (result.error) { setImportError(result.error); return; }
-            if (library.find(m => m.id === result.def.id)) {
-                setImportError(`A mode with id "${result.def.id}" already exists.`);
+            if (library.find(function (m) { return m.id === result.def.id; })) {
+                setImportError('A mode with id "' + result.def.id + '" already exists.');
                 return;
             }
-            registry.addImported(result.def).then(() => {
-                reload();
-                setImportText('');
-                setImportError('');
-            });
+            setImportError('');
+            registry.addImported(result.def)
+                .then(function () { reload(); setImportText(''); })
+                .catch(function (err) {
+                    console.error('[Mode Manager] addImported failed:', err);
+                    setImportError('Failed to save import — ' + err.message);
+                });
         }
 
+        // Shared banners
+        var loadErrorBanner = loadError
+            ? h('div', { style: STYLES.warnBox }, '⚠ ' + loadError)
+            : null;
+
+        var actionErrorBanner = actionError
+            ? h('div', { style: Object.assign({}, STYLES.warnBox, { color: '#ef4444' }) }, '✕ ' + actionError)
+            : null;
+
         // Tab bar
-        const tabBar = h('div', { style: STYLES.tabBar },
-            ['library', 'game'].map(t =>
-                h('button', {
-                    key: t,
-                    onClick: () => setTab(t),
-                    style: { ...STYLES.tab, ...(tab === t ? STYLES.tabActive : STYLES.tabInactive) }
-                }, t === 'library' ? 'Library' : 'This Game')
-            )
+        var tabBar = h('div', { style: STYLES.tabBar },
+            h('button', {
+                onClick: function () { setTab('library'); },
+                style: Object.assign({}, STYLES.tab, tab === 'library' ? STYLES.tabActive : STYLES.tabInactive)
+            }, 'Library'),
+            h('button', {
+                onClick: function () { setTab('game'); },
+                style: Object.assign({}, STYLES.tab, tab === 'game' ? STYLES.tabActive : STYLES.tabInactive)
+            }, 'This Game')
         );
 
         // ── Library tab ──────────────────────────────────────────────
-        const libraryTab = h('div', null,
-            library.map(mode =>
-                h('div', { key: mode.id, style: STYLES.row },
-                    h('div', null,
-                        h('div', { style: STYLES.modeName }, mode.name),
-                        h('div', { style: { ...STYLES.modeSubtitle, color: '#6b7280' } },
-                            mode.source === 'builtin' ? 'Built-in' : 'Imported'
-                        )
-                    ),
-                    mode.source === 'imported'
-                        ? h('button', {
-                            title: committedIds.has(mode.id) ? 'Cannot remove — added to a game' : 'Remove from library',
-                            disabled: committedIds.has(mode.id),
-                            onClick: () => handleRemoveImported(mode.id),
-                            style: { ...STYLES.iconBtn,
-                                color: committedIds.has(mode.id) ? '#374151' : '#ef4444',
-                                cursor: committedIds.has(mode.id) ? 'not-allowed' : 'pointer' }
-                          }, '✕')
-                        : null
-                )
-            ),
+        var libraryRows = library.map(function (mode) {
+            var isCommitted = !!committedIds[mode.id];
+            return h('div', { key: mode.id, style: STYLES.row },
+                h('div', null,
+                    h('div', { style: STYLES.modeName }, mode.name),
+                    h('div', { style: Object.assign({}, STYLES.modeSubtitle, { color: '#6b7280' }) },
+                        mode.source === 'builtin' ? 'Built-in' : 'Imported'
+                    )
+                ),
+                mode.source === 'imported'
+                    ? h('button', {
+                        title: isCommitted ? 'Cannot remove — added to a game' : 'Remove from library',
+                        disabled: isCommitted,
+                        onClick: function () { handleRemoveImported(mode.id); },
+                        style: Object.assign({}, STYLES.iconBtn, {
+                            color: isCommitted ? '#374151' : '#ef4444',
+                            cursor: isCommitted ? 'not-allowed' : 'pointer'
+                        })
+                      }, '✕')
+                    : null
+            );
+        });
+
+        var importCanSubmit = importText.trim().length > 0;
+        var libraryTab = h('div', null,
+            h('div', null, libraryRows),
             h('div', { style: STYLES.divider },
                 h('div', { style: STYLES.sectionLabel }, 'Import a Mode'),
                 h('textarea', {
                     value: importText,
-                    onChange: e => { setImportText(e.target.value); setImportError(''); },
+                    onChange: function (e) { setImportText(e.target.value); setImportError(''); },
                     placeholder: '{ "id": "my-mode", "name": "My Mode", "stats": { ... }, ... }',
                     style: STYLES.textarea
                 }),
-                importError ? h('div', { style: STYLES.error }, importError) : null,
+                importError ? h('div', { style: STYLES.errorBox }, importError) : null,
                 h('button', {
                     onClick: handleImport,
-                    disabled: !importText.trim(),
-                    style: {
-                        ...STYLES.importBtn,
-                        background: importText.trim() ? '#2563eb' : '#1f2937',
-                        color: importText.trim() ? '#fff' : '#6b7280',
-                        cursor: importText.trim() ? 'pointer' : 'not-allowed'
-                    }
+                    disabled: !importCanSubmit,
+                    style: Object.assign({}, STYLES.importBtn, {
+                        background: importCanSubmit ? '#2563eb' : '#1f2937',
+                        color: importCanSubmit ? '#fff' : '#6b7280',
+                        cursor: importCanSubmit ? 'pointer' : 'not-allowed'
+                    })
                 }, 'Add Mode')
             )
         );
 
         // ── This Game tab ────────────────────────────────────────────
-        const committedEntries = committed.map(c => ({ ...c, def: library.find(m => m.id === c.id) }));
-        const available = library.filter(m => !committedIds.has(m.id));
+        var committedEntries = committed.map(function (c) {
+            return { id: c.id, locked: c.locked, def: library.find(function (m) { return m.id === c.id; }) };
+        });
+        var available = library.filter(function (m) { return !committedIds[m.id]; });
 
-        const gameTab = h('div', null,
-            committedEntries.length === 0
-                ? h('div', { style: STYLES.empty }, 'No modes added to this game yet.')
-                : h('div', { style: { marginBottom: '4px' } },
-                    h('div', { style: STYLES.sectionLabel }, 'Active in this game'),
-                    committedEntries.map(({ id, locked, def }) =>
-                        h('div', { key: id, style: STYLES.row },
-                            h('div', null,
-                                h('div', { style: STYLES.modeName }, def ? def.name : id),
-                                h('div', { style: { ...STYLES.modeSubtitle,
-                                    color: locked ? '#f59e0b' : '#34d399' } },
-                                    locked ? '🔒 In use — cannot remove' : 'Pending next load'
-                                )
-                            ),
-                            !locked
-                                ? h('button', {
-                                    title: 'Remove from this game',
-                                    onClick: () => handleRemoveCommitted(id),
-                                    style: { ...STYLES.iconBtn, color: '#ef4444' }
-                                  }, '✕')
-                                : null
-                        )
-                    )
-                  ),
-            available.length > 0
-                ? h('div', { style: STYLES.divider },
-                    h('div', { style: STYLES.sectionLabel }, 'Available to add'),
-                    available.map(mode =>
-                        h('div', { key: mode.id, style: STYLES.row },
-                            h('div', { style: { ...STYLES.modeName, color: '#9ca3af' } }, mode.name),
-                            h('button', {
-                                onClick: () => handleCommit(mode.id),
-                                style: STYLES.addBtn
-                            }, '+ Add')
-                        )
-                    )
-                  )
-                : null,
-            dirty
-                ? h('div', { style: STYLES.notice }, '⚠ Changes apply on next game load')
-                : null
+        var committedSection = committedEntries.length === 0
+            ? h('div', { style: STYLES.empty }, 'No modes added to this game yet.')
+            : h('div', { style: { marginBottom: '4px' } },
+                h('div', { style: STYLES.sectionLabel }, 'Active in this game'),
+                committedEntries.map(function (entry) {
+                    return h('div', { key: entry.id, style: STYLES.row },
+                        h('div', null,
+                            h('div', { style: STYLES.modeName }, entry.def ? entry.def.name : entry.id),
+                            h('div', { style: Object.assign({}, STYLES.modeSubtitle, { color: entry.locked ? '#f59e0b' : '#34d399' }) },
+                                entry.locked ? '🔒 In use — cannot remove' : 'Pending next load'
+                            )
+                        ),
+                        !entry.locked
+                            ? h('button', {
+                                title: 'Remove from this game',
+                                onClick: function () { handleRemoveCommitted(entry.id); },
+                                style: Object.assign({}, STYLES.iconBtn, { color: '#ef4444' })
+                              }, '✕')
+                            : null
+                    );
+                })
+              );
+
+        var availableSection = available.length > 0
+            ? h('div', { style: STYLES.divider },
+                h('div', { style: STYLES.sectionLabel }, 'Available to add'),
+                available.map(function (mode) {
+                    return h('div', { key: mode.id, style: STYLES.row },
+                        h('div', { style: Object.assign({}, STYLES.modeName, { color: '#9ca3af' }) }, mode.name),
+                        h('button', {
+                            onClick: function () { handleCommit(mode.id); },
+                            style: STYLES.addBtn
+                        }, '+ Add')
+                    );
+                })
+              )
+            : null;
+
+        var gameTab = h('div', null,
+            committedSection,
+            availableSection,
+            dirty ? h('div', { style: STYLES.notice }, '⚠ Changes apply on next game load') : null
         );
 
         return h('div', { style: STYLES.root },
+            loadErrorBanner,
+            actionErrorBanner,
             tabBar,
             tab === 'library' ? libraryTab : gameTab
         );
     }
 
     // ─── INIT ────────────────────────────────────────────────────────────────────
+    // onGameInit callback is synchronous. The toolbar panel is registered first so
+    // it always appears. Mode registration runs asynchronously afterward and does
+    // not block panel visibility.
 
-    api.hooks.onGameInit(async () => {
+    api.hooks.onGameInit(function () {
         try {
-            const [library, committed] = await Promise.all([
-                registry.getLibrary(),
-                registry.getCommitted()
-            ]);
-
-            const libraryMap = new Map(library.map(m => [m.id, m]));
-            let registered = 0;
-
-            for (const { id } of committed) {
-                const def = libraryMap.get(id);
-                if (!def) {
-                    console.warn(`[Mode Manager] Committed mode "${id}" missing from library — skipping`);
-                    continue;
-                }
-                const { source, version, ...trainConfig } = def;
-                api.trains.registerTrainType(trainConfig);
-                registered++;
-            }
-
-            // Lock all committed entries — they have now been registered and
-            // may have been placed in the game world.
-            await registry.lockAll();
-
+            // Register the panel immediately — synchronous, always runs regardless
+            // of whether storage or train registration succeeds.
             api.ui.addToolbarPanel({
                 id: 'mode-manager',
                 icon: 'TrainTrack',
                 tooltip: 'Open Mode Manager',
                 title: 'Mode Manager',
                 width: 320,
-                render: () => h(ModeManagerPanel, null)
+                render: function () {
+                    return api.utils.React.createElement(ModeManagerPanel, null);
+                }
             });
 
-            console.log(`[Mode Manager] ${registered} mode(s) registered`);
-            api.ui.showNotification(
-                `Mode Manager active — ${registered} mode${registered !== 1 ? 's' : ''} registered`,
-                'success'
-            );
-        } catch (error) {
-            console.error('[Mode Manager] Error:', error);
+            // Async: register committed train types. Failures are logged and
+            // surfaced via notification but do not affect panel availability.
+            Promise.all([registry.getLibrary(), registry.getCommitted()])
+                .then(function (results) {
+                    var library   = results[0];
+                    var committed = results[1];
+
+                    var libraryMap = {};
+                    library.forEach(function (m) { libraryMap[m.id] = m; });
+
+                    var registered = 0;
+                    committed.forEach(function (entry) {
+                        var def = libraryMap[entry.id];
+                        if (!def) {
+                            console.warn('[Mode Manager] Committed mode "' + entry.id + '" not in library — skipping');
+                            return;
+                        }
+                        // Strip metadata fields before passing to the game API
+                        var trainConfig = Object.assign({}, def);
+                        delete trainConfig.source;
+                        delete trainConfig.version;
+                        try {
+                            api.trains.registerTrainType(trainConfig);
+                            registered++;
+                        } catch (regErr) {
+                            console.error('[Mode Manager] Failed to register "' + entry.id + '":', regErr);
+                        }
+                    });
+
+                    return registry.lockAll().then(function () { return registered; });
+                })
+                .then(function (registered) {
+                    var msg = 'Mode Manager active';
+                    if (registered > 0) {
+                        msg += ' — ' + registered + ' mode' + (registered !== 1 ? 's' : '') + ' registered';
+                    }
+                    console.log('[Mode Manager] ' + msg);
+                    api.ui.showNotification(msg, 'success');
+                })
+                .catch(function (err) {
+                    console.error('[Mode Manager] Mode registration error:', err);
+                    api.ui.showNotification('Mode Manager: failed to register committed modes — check console', 'warning');
+                });
+
+        } catch (err) {
+            console.error('[Mode Manager] Critical init error:', err);
+            api.ui.showNotification('Mode Manager failed to initialize — check console', 'error');
         }
     });
 
