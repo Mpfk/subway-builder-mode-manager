@@ -26,5 +26,9 @@ jq empty "$MANIFEST" >/dev/null 2>&1 || fail "manifest.json is not valid JSON"
 
 grep -q 'window.SubwayBuilderAPI' "$INDEX_JS" || fail "API check missing"
 grep -q 'onGameInit' "$INDEX_JS" || fail "onGameInit hook missing"
+grep -q 'api.storage' "$INDEX_JS" || fail "api.storage usage missing"
+grep -q 'addToolbarPanel' "$INDEX_JS" || fail "addToolbarPanel missing"
+grep -q 'registerTrainType' "$INDEX_JS" || fail "registerTrainType missing"
+grep -q 'validateImport' "$INDEX_JS" || fail "validateImport missing"
 
 echo "PASS: smoke test"
