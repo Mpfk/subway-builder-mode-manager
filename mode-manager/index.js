@@ -247,8 +247,8 @@
     };
 
     // ─── UI ──────────────────────────────────────────────────────────────────────
-
-    const { createElement: h, useState, useEffect } = api.utils.React;
+    // React is accessed lazily inside ModeManagerPanel (not at module load time)
+    // because api.utils may not be populated until after onGameInit fires.
 
     const STYLES = {
         root:       { padding: '12px 16px', color: '#f9fafb', fontFamily: 'inherit' },
@@ -280,6 +280,15 @@
     };
 
     function ModeManagerPanel() {
+        const { createElement: h, useState, useEffect } = api.utils.React;
+
+        if (typeof useState !== 'function' || typeof useEffect !== 'function') {
+            return h('div', { style: STYLES.root },
+                h('p', { style: { color: '#ef4444', fontSize: '13px' } },
+                    'Mode Manager requires React 16.8+. Please update Subway Builder.')
+            );
+        }
+
         const [tab, setTab]             = useState('library');
         const [library, setLibrary]     = useState(null);
         const [committed, setCommitted] = useState(null);
