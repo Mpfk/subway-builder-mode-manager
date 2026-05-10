@@ -1,0 +1,29 @@
+{
+  "id": "light-rail",
+  "name": "Light Rail",
+  "description": "Multi-car light rail for medium-capacity urban corridors",
+  "stats": {
+    "maxAcceleration": 1.2,
+    "maxDeceleration": 1.3,
+    "maxSpeed": 22,
+    "maxSpeedLocalStation": 8,
+    "capacityPerCar": 90,
+    "carLength": 28,
+    "minCars": 2,
+    "maxCars": 4,
+    "carsPerCarSet": 2,
+    "carCost": 1200000,
+    "trainWidth": 2.5,
+    "minStationLength": 56,
+    "maxStationLength": 112,
+    "baseTrackCost": 8000,
+    "baseStationCost": 6000000,
+    "trainOperationalCostPerHour": 120,
+    "carOperationalCostPerHour": 30,
+    "scissorsCrossoverCost": 2500000
+  },
+  "compatibleTrackTypes": ["tram"],
+  "appearance": { "color": "#10b981" },
+  "allowAtGradeRoadCrossing": true,
+  "tags": ["rail"]
+}
