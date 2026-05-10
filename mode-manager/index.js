@@ -145,31 +145,53 @@
     ];
 
     // ─── STORAGE ─────────────────────────────────────────────────────────────────
-    // Use api.storage when available. Fall back to an in-memory store so the rest
-    // of the mod works (without persistence) if the API surface is missing.
+    // api.storage is context-bound and only works during onGameInit callbacks.
+    // React event handlers fire outside that context, so ui-triggered writes are
+    // silently dropped. localStorage works from any execution context and is the
+    // correct persistence layer for Electron-based mods.
 
     var storage = (function () {
-        if (api.storage && typeof api.storage.get === 'function') {
-            return api.storage;
-        }
-        console.warn('[Mode Manager] api.storage unavailable — falling back to in-memory store (state will not persist)');
-        var mem = {};
-        return {
-            get: function (key, defaultValue) {
-                return Promise.resolve(key in mem ? mem[key] : defaultValue);
-            },
-            set: function (key, value) {
-                mem[key] = value;
-                return Promise.resolve();
-            },
-            delete: function (key) {
-                delete mem[key];
-                return Promise.resolve();
-            },
-            keys: function () {
-                return Promise.resolve(Object.keys(mem));
+        var PREFIX = 'mode-manager:';
+
+        function get(key, defaultValue) {
+            try {
+                var raw = localStorage.getItem(PREFIX + key);
+                if (raw === null) return Promise.resolve(defaultValue !== undefined ? defaultValue : null);
+                return Promise.resolve(JSON.parse(raw));
+            } catch (e) {
+                console.warn('[Mode Manager] storage.get failed for "' + key + '":', e);
+                return Promise.resolve(defaultValue !== undefined ? defaultValue : null);
             }
-        };
+        }
+
+        function set(key, value) {
+            try {
+                localStorage.setItem(PREFIX + key, JSON.stringify(value));
+            } catch (e) {
+                console.warn('[Mode Manager] storage.set failed for "' + key + '":', e);
+            }
+            return Promise.resolve();
+        }
+
+        function del(key) {
+            try { localStorage.removeItem(PREFIX + key); } catch (e) {}
+            return Promise.resolve();
+        }
+
+        function keys() {
+            try {
+                var result = [];
+                for (var i = 0; i < localStorage.length; i++) {
+                    var k = localStorage.key(i);
+                    if (k && k.indexOf(PREFIX) === 0) result.push(k.slice(PREFIX.length));
+                }
+                return Promise.resolve(result);
+            } catch (e) {
+                return Promise.resolve([]);
+            }
+        }
+
+        return { get: get, set: set, delete: del, keys: keys };
     })();
 
     // ─── REGISTRY ────────────────────────────────────────────────────────────────
