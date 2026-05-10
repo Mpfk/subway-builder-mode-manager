@@ -260,7 +260,7 @@
             return storage.get('modes-committed', []).then(function (committed) {
                 var list = Array.isArray(committed) ? committed : [];
                 return storage.set('modes-committed', list.map(function (c) {
-                    return Object.assign({}, c, { locked: !!usedIds[c.id] });
+                    return Object.assign({}, c, { locked: c.locked || !!usedIds[c.id] });
                 }));
             });
         },
