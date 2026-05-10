@@ -256,6 +256,15 @@
             });
         },
 
+        lockMode: function (id) {
+            return storage.get('modes-committed', []).then(function (committed) {
+                var list = Array.isArray(committed) ? committed : [];
+                return storage.set('modes-committed', list.map(function (c) {
+                    return c.id === id ? Object.assign({}, c, { locked: true }) : c;
+                }));
+            });
+        },
+
         validateImport: function (jsonText) {
             var def;
             try {
@@ -643,6 +652,45 @@
         } catch (err) {
             console.error('[Mode Manager] Critical init error:', err);
             api.ui.showNotification('Mode Manager failed to initialize — check console', 'error');
+        }
+    });
+
+    // ─── REAL-TIME LOCK HOOKS ────────────────────────────────────────────────────
+    // Lock a mode the moment tracks are built or a route is created, rather than
+    // waiting for the next game reload. The first event is logged in full so we
+    // can confirm the Track/Route field names used to identify the train type.
+
+    var trackShapeLogged = false;
+    api.hooks.onTrackBuilt(function (tracks) {
+        if (!Array.isArray(tracks) || tracks.length === 0) return;
+        if (!trackShapeLogged) {
+            console.log('[Mode Manager] onTrackBuilt — Track object shape:', tracks[0]);
+            trackShapeLogged = true;
+        }
+        var seen = {};
+        tracks.forEach(function (track) {
+            var typeId = track.trainTypeId || track.trainType || track.type;
+            if (typeId && !seen[typeId]) {
+                seen[typeId] = true;
+                registry.lockMode(typeId).catch(function (err) {
+                    console.error('[Mode Manager] lockMode failed for "' + typeId + '":', err);
+                });
+            }
+        });
+    });
+
+    var routeShapeLogged = false;
+    api.hooks.onRouteCreated(function (route) {
+        if (!route) return;
+        if (!routeShapeLogged) {
+            console.log('[Mode Manager] onRouteCreated — Route object shape:', route);
+            routeShapeLogged = true;
+        }
+        var typeId = route.trainTypeId || route.trainType || route.type;
+        if (typeId) {
+            registry.lockMode(typeId).catch(function (err) {
+                console.error('[Mode Manager] lockMode failed for "' + typeId + '":', err);
+            });
         }
     });
 
