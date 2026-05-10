@@ -310,7 +310,7 @@
         var useState   = React.useState;
         var useEffect  = React.useEffect;
 
-        var tabState         = useState('library');
+        var tabState         = useState('save');
         var libraryState     = useState(null);
         var committedState   = useState(null);
         var loadErrorState   = useState(null);
@@ -411,13 +411,13 @@
         // Tab bar
         var tabBar = h('div', { style: STYLES.tabBar },
             h('button', {
+                onClick: function () { setTab('save'); },
+                style: Object.assign({}, STYLES.tab, tab === 'save' ? STYLES.tabActive : STYLES.tabInactive)
+            }, 'This Save'),
+            h('button', {
                 onClick: function () { setTab('library'); },
                 style: Object.assign({}, STYLES.tab, tab === 'library' ? STYLES.tabActive : STYLES.tabInactive)
-            }, 'Library'),
-            h('button', {
-                onClick: function () { setTab('game'); },
-                style: Object.assign({}, STYLES.tab, tab === 'game' ? STYLES.tabActive : STYLES.tabInactive)
-            }, 'This Game')
+            }, 'Library')
         );
 
         // ── Library tab ──────────────────────────────────────────────
@@ -468,7 +468,7 @@
             )
         );
 
-        // ── This Game tab ────────────────────────────────────────────
+        // ── This Save tab ────────────────────────────────────────────
         var committedEntries = committed.map(function (c) {
             return { id: c.id, locked: c.locked, def: library.find(function (m) { return m.id === c.id; }) };
         });
@@ -512,17 +512,17 @@
               )
             : null;
 
-        var gameTab = h('div', null,
+        var saveTab = h('div', null,
             committedSection,
             availableSection,
-            dirty ? h('div', { style: STYLES.notice }, '⚠ Changes apply on next game load') : null
+            dirty ? h('div', { style: STYLES.notice }, '⚠ Mode added, press Control + Shift + R to reload and enable.') : null
         );
 
         return h('div', { style: STYLES.root },
             loadErrorBanner,
             actionErrorBanner,
             tabBar,
-            tab === 'library' ? libraryTab : gameTab
+            tab === 'save' ? saveTab : libraryTab
         );
     }
 
