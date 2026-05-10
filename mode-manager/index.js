@@ -8,6 +8,15 @@
         return;
     }
 
+    // Prevent double-initialization when the game evaluates the mod script more
+    // than once per page load. Each IIFE execution has its own closure, so a
+    // closure-level flag is not sufficient — window persists across all of them.
+    if (window.__modeManagerLoaded) {
+        console.warn('[Mode Manager] Already initialized — skipping duplicate execution.');
+        return;
+    }
+    window.__modeManagerLoaded = true;
+
     console.log('[Mode Manager] Loaded!');
 
     // ─── BUILTINS ────────────────────────────────────────────────────────────────
