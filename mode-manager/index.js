@@ -425,7 +425,10 @@
         function handleRemoveCommitted(id) {
             setActionError(null);
             registry.removeCommitted(id)
-                .then(reloadMod)
+                .then(function () {
+                    api.ui.showNotification('Mode removed — reload save to clear from build panel', 'info');
+                    reloadMod();
+                })
                 .catch(function (err) {
                     console.error('[Mode Manager] removeCommitted failed:', err);
                     setActionError('Failed to remove — ' + err.message);
