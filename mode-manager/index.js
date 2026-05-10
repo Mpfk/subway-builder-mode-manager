@@ -404,7 +404,10 @@
         var committedIds = {};
         committed.forEach(function (c) { committedIds[c.id] = true; });
 
-        function reloadMod() {
+        function reloadMod(pendingMsg, pendingType) {
+            if (pendingMsg) {
+                localStorage.setItem('mode-manager:pending-notification', JSON.stringify({ msg: pendingMsg, type: pendingType || 'info' }));
+            }
             window.__modeManagerLoaded = false;
             api.reloadMods().catch(function (err) {
                 console.error('[Mode Manager] reloadMods failed:', err);
@@ -415,7 +418,7 @@
         function handleCommit(id) {
             setActionError(null);
             registry.commitMode(id)
-                .then(reloadMod)
+                .then(function () { reloadMod('Mode added', 'success'); })
                 .catch(function (err) {
                     console.error('[Mode Manager] commitMode failed:', err);
                     setActionError('Failed to save — ' + err.message);
@@ -425,10 +428,7 @@
         function handleRemoveCommitted(id) {
             setActionError(null);
             registry.removeCommitted(id)
-                .then(function () {
-                    api.ui.showNotification('Mode removed — reload save to clear from build panel', 'info');
-                    reloadMod();
-                })
+                .then(function () { reloadMod('Mode removed — reload save to clear from build panel', 'info'); })
                 .catch(function (err) {
                     console.error('[Mode Manager] removeCommitted failed:', err);
                     setActionError('Failed to remove — ' + err.message);
@@ -661,6 +661,14 @@
                 })
                 .then(function (registered) {
                     console.log('[Mode Manager] active — ' + registered + ' mode' + (registered !== 1 ? 's' : '') + ' added');
+                    try {
+                        var raw = localStorage.getItem('mode-manager:pending-notification');
+                        if (raw) {
+                            localStorage.removeItem('mode-manager:pending-notification');
+                            var pending = JSON.parse(raw);
+                            api.ui.showNotification(pending.msg, pending.type);
+                        }
+                    } catch (e) {}
                 })
                 .catch(function (err) {
                     console.error('[Mode Manager] Mode registration error:', err);
