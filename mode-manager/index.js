@@ -364,7 +364,6 @@
         var importTextState  = useState('');
         var importErrorState = useState('');
         var actionErrorState = useState(null);
-        var dirtyState       = useState(false);
 
         var tab         = tabState[0];         var setTab         = tabState[1];
         var library     = libraryState[0];     var setLibrary     = libraryState[1];
@@ -373,7 +372,6 @@
         var importText  = importTextState[0];  var setImportText  = importTextState[1];
         var importError = importErrorState[0]; var setImportError = importErrorState[1];
         var actionError = actionErrorState[0]; var setActionError = actionErrorState[1];
-        var dirty       = dirtyState[0];       var setDirty       = dirtyState[1];
 
         function reload() {
             setLoadError(null);
@@ -406,10 +404,18 @@
         var committedIds = {};
         committed.forEach(function (c) { committedIds[c.id] = true; });
 
+        function reloadMod() {
+            window.__modeManagerLoaded = false;
+            api.reloadMods().catch(function (err) {
+                console.error('[Mode Manager] reloadMods failed:', err);
+                setActionError('Reload failed — ' + err.message);
+            });
+        }
+
         function handleCommit(id) {
             setActionError(null);
             registry.commitMode(id)
-                .then(function () { reload(); setDirty(true); })
+                .then(reloadMod)
                 .catch(function (err) {
                     console.error('[Mode Manager] commitMode failed:', err);
                     setActionError('Failed to save — ' + err.message);
@@ -419,7 +425,7 @@
         function handleRemoveCommitted(id) {
             setActionError(null);
             registry.removeCommitted(id)
-                .then(function () { reload(); setDirty(true); })
+                .then(reloadMod)
                 .catch(function (err) {
                     console.error('[Mode Manager] removeCommitted failed:', err);
                     setActionError('Failed to remove — ' + err.message);
@@ -567,8 +573,7 @@
 
         var saveTab = h('div', null,
             committedSection,
-            availableSection,
-            dirty ? h('div', { style: STYLES.notice }, '⚠ Mode added, press Control + Shift + R to reload and enable.') : null
+            availableSection
         );
 
         return h('div', { style: STYLES.root },
