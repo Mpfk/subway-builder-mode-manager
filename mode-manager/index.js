@@ -508,7 +508,7 @@
                             color: isCommitted ? '#374151' : '#ef4444',
                             cursor: isCommitted ? 'not-allowed' : 'pointer'
                         })
-                      }, '✕')
+                      }, '🗑️')
                     : null
             );
         });
