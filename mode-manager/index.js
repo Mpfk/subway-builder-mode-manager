@@ -180,48 +180,55 @@
     var registry = {
         getLibrary: function () {
             return storage.get('modes-imported', []).then(function (imported) {
-                return BUILTINS.concat(imported);
+                return BUILTINS.concat(Array.isArray(imported) ? imported : []);
             });
         },
 
         addImported: function (def) {
             return storage.get('modes-imported', []).then(function (imported) {
-                imported.push(Object.assign({}, def, { source: 'imported' }));
-                return storage.set('modes-imported', imported);
+                var list = Array.isArray(imported) ? imported : [];
+                list.push(Object.assign({}, def, { source: 'imported' }));
+                return storage.set('modes-imported', list);
             });
         },
 
         removeImported: function (id) {
             return storage.get('modes-imported', []).then(function (imported) {
-                return storage.set('modes-imported', imported.filter(function (m) { return m.id !== id; }));
+                var list = Array.isArray(imported) ? imported : [];
+                return storage.set('modes-imported', list.filter(function (m) { return m.id !== id; }));
             });
         },
 
         getCommitted: function () {
-            return storage.get('modes-committed', []);
+            return storage.get('modes-committed', []).then(function (val) {
+                return Array.isArray(val) ? val : [];
+            });
         },
 
         commitMode: function (id) {
             return storage.get('modes-committed', []).then(function (committed) {
-                if (!committed.find(function (c) { return c.id === id; })) {
-                    committed.push({ id: id, locked: false });
-                    return storage.set('modes-committed', committed);
+                var list = Array.isArray(committed) ? committed : [];
+                if (!list.find(function (c) { return c.id === id; })) {
+                    list.push({ id: id, locked: false });
+                    return storage.set('modes-committed', list);
                 }
             });
         },
 
         removeCommitted: function (id) {
             return storage.get('modes-committed', []).then(function (committed) {
-                var entry = committed.find(function (c) { return c.id === id; });
+                var list = Array.isArray(committed) ? committed : [];
+                var entry = list.find(function (c) { return c.id === id; });
                 if (entry && !entry.locked) {
-                    return storage.set('modes-committed', committed.filter(function (c) { return c.id !== id; }));
+                    return storage.set('modes-committed', list.filter(function (c) { return c.id !== id; }));
                 }
             });
         },
 
         lockAll: function () {
             return storage.get('modes-committed', []).then(function (committed) {
-                return storage.set('modes-committed', committed.map(function (c) {
+                var list = Array.isArray(committed) ? committed : [];
+                return storage.set('modes-committed', list.map(function (c) {
                     return Object.assign({}, c, { locked: true });
                 }));
             });
