@@ -1,0 +1,72 @@
+name: Workflow Policy
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  issues: read
+  pull-requests: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate branch and linked issue policy
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pr = context.payload.pull_request;
+
+            const branch = pr.head.ref;
+            const prBody = `${pr.title}\n\n${pr.body || ''}`;
+
+            // Extract issue number: prefer branch name (issue/{n}), fall back to 'Closes #N' in PR body.
+            // This supports both the VS Code path (issue/{n} branches) and the Native GitHub path
+            // where GitHub's Copilot SWE agent always creates copilot/... branches.
+            let issueNumber;
+            const branchMatch = /^issue\/(\d+)$/.exec(branch);
+            if (branchMatch) {
+              issueNumber = Number(branchMatch[1]);
+            } else {
+              const bodyMatch = /closes\s+#(\d+)/i.exec(prBody);
+              if (!bodyMatch) {
+                core.setFailed(`PR must either use an issue/{number} branch or include 'Closes #N' in the title/body. Branch: ${branch}`);
+                return;
+              }
+              issueNumber = Number(bodyMatch[1]);
+            }
+
+            let issue;
+            try {
+              issue = (await github.rest.issues.get({ owner, repo, issue_number: issueNumber })).data;
+            } catch {
+              core.setFailed(`No matching issue found for #${issueNumber} (branch: ${branch}).`);
+              return;
+            }
+
+            const labels = (issue.labels || []).map((l) => l.name);
+            const blocked = labels.includes('status/blocked');
+            const cancelled = labels.includes('status/cancelled');
+            const inReview = labels.includes('status/review');
+            if (blocked || cancelled) {
+              core.setFailed(`Issue #${issueNumber} is ${blocked ? 'blocked' : 'cancelled'}.`);
+              return;
+            }
+
+            if (!pr.draft && !inReview) {
+              core.setFailed(`PR cannot be ready-for-review unless linked issue #${issueNumber} is status/review.`);
+              return;
+            }
+
+            if (!prBody.includes(`Closes #${issueNumber}`)) {
+              core.setFailed(`PR must include 'Closes #${issueNumber}' in title or body.`);
+              return;
+            }
+
+            core.info(`Workflow policy checks passed for issue #${issueNumber} (branch: ${branch}).`);
