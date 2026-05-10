@@ -12,8 +12,8 @@
         try {
             api.ui.addToolbarPanel({
                 id: 'mode-manager',
-                icon: 'Layers',
-                tooltip: 'Mode Manager',
+                icon: 'TrainTrack',
+                tooltip: 'Open Mode Manager',
                 title: 'Mode Manager',
                 width: 320,
                 render: () => {
