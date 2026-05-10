@@ -659,14 +659,14 @@
                 .then(function (registered) {
                     var msg = 'Mode Manager active';
                     if (registered > 0) {
-                        msg += ' — ' + registered + ' mode' + (registered !== 1 ? 's' : '') + ' registered';
+                        msg += ' — ' + registered + ' mode' + (registered !== 1 ? 's' : '') + ' added';
                     }
                     console.log('[Mode Manager] ' + msg);
                     api.ui.showNotification(msg, 'success');
                 })
                 .catch(function (err) {
                     console.error('[Mode Manager] Mode registration error:', err);
-                    api.ui.showNotification('Mode Manager: failed to register committed modes — check console', 'warning');
+                    api.ui.showNotification('Mode Manager: failed to add committed modes — check console', 'warning');
                 });
 
         } catch (err) {
