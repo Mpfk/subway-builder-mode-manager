@@ -383,6 +383,12 @@
 
         useEffect(function () { reload(); }, []);
 
+        useEffect(function () {
+            function onLockChanged() { reload(); }
+            window.addEventListener('mode-manager:lock-changed', onLockChanged);
+            return function () { window.removeEventListener('mode-manager:lock-changed', onLockChanged); };
+        }, []);
+
         // Loading state
         if (!library || !committed) {
             return h('div', { style: Object.assign({}, STYLES.root, { color: '#6b7280' }) }, 'Loading...');
@@ -625,7 +631,7 @@
                         var routes = api.gameState.getRoutes();
                         if (Array.isArray(routes)) {
                             routes.forEach(function (route) {
-                                var typeId = route.trainTypeId || route.trainType || route.type;
+                                var typeId = route.trackType || route.trainTypeId || route.trainType;
                                 if (typeId) usedIds[typeId] = true;
                             });
                         }
@@ -660,21 +666,20 @@
     // waiting for the next game reload. The first event is logged in full so we
     // can confirm the Track/Route field names used to identify the train type.
 
-    var trackShapeLogged = false;
     api.hooks.onTrackBuilt(function (tracks) {
         if (!Array.isArray(tracks) || tracks.length === 0) return;
-        if (!trackShapeLogged) {
-            console.log('[Mode Manager] onTrackBuilt — Track object shape:', tracks[0]);
-            trackShapeLogged = true;
-        }
         var seen = {};
         tracks.forEach(function (track) {
-            var typeId = track.trainTypeId || track.trainType || track.type;
+            var typeId = track.trackType;
             if (typeId && !seen[typeId]) {
                 seen[typeId] = true;
-                registry.lockMode(typeId).catch(function (err) {
-                    console.error('[Mode Manager] lockMode failed for "' + typeId + '":', err);
-                });
+                registry.lockMode(typeId)
+                    .then(function () {
+                        window.dispatchEvent(new CustomEvent('mode-manager:lock-changed'));
+                    })
+                    .catch(function (err) {
+                        console.error('[Mode Manager] lockMode failed for "' + typeId + '":', err);
+                    });
             }
         });
     });
@@ -686,11 +691,15 @@
             console.log('[Mode Manager] onRouteCreated — Route object shape:', route);
             routeShapeLogged = true;
         }
-        var typeId = route.trainTypeId || route.trainType || route.type;
+        var typeId = route.trackType || route.trainTypeId || route.trainType;
         if (typeId) {
-            registry.lockMode(typeId).catch(function (err) {
-                console.error('[Mode Manager] lockMode failed for "' + typeId + '":', err);
-            });
+            registry.lockMode(typeId)
+                .then(function () {
+                    window.dispatchEvent(new CustomEvent('mode-manager:lock-changed'));
+                })
+                .catch(function (err) {
+                    console.error('[Mode Manager] lockMode failed for "' + typeId + '":', err);
+                });
         }
     });
 
