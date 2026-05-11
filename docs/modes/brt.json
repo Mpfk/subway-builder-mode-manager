@@ -1,4 +1,6 @@
 {
+  "schemaVersion": "1.0.0",
+  "revision": 1,
   "id": "brt",
   "name": "Bus Rapid Transit",
   "description": "High-capacity bus for dedicated rapid transit corridors",

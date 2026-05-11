@@ -18,20 +18,20 @@
     window.__modeManagerLoaded = true;
 
     // Schema version. Bump this in lockstep with manifest.json whenever a
-    // change to the on-disk storage layout requires a migration. The block
-    // below runs each migration once per machine by comparing the stored
-    // installed-version against MOD_VERSION.
-    var MOD_VERSION = '1.0.1';
+    // change to the on-disk storage layout requires a migration. Cheap
+    // dependency-free migrations run inline below; ones that need BUILTINS
+    // or the registry run later via runSchemaMigrations().
+    var MOD_VERSION = '1.0.2';
+    var INSTALLED_VERSION_KEY = 'mode-manager:installed-version';
+    var installedVersionAtLoad = null;
     try {
-        var installedVersion = localStorage.getItem('mode-manager:installed-version');
-        if (installedVersion !== MOD_VERSION) {
+        installedVersionAtLoad = localStorage.getItem(INSTALLED_VERSION_KEY);
+        if (installedVersionAtLoad !== MOD_VERSION) {
             // Pre-1.0.1 stored committed modes under a single global key,
-            // which leaked the list into every new game. 1.0.1 keys per save
-            // instead; existing saves recover via lockUsed's route-driven
-            // self-heal on next load. Safe to run on a fresh install: the
-            // legacy key simply won't exist.
+            // which leaked the list into every new game. 1.0.1+ keys per
+            // save. Safe to run on a fresh install: the legacy key simply
+            // won't exist.
             localStorage.removeItem('mode-manager:modes-committed');
-            localStorage.setItem('mode-manager:installed-version', MOD_VERSION);
         }
     } catch (e) {}
 
@@ -45,7 +45,8 @@
             name: 'Tram',
             description: 'Lightweight tram for short-distance urban transit',
             source: 'builtin',
-            version: '1.0.1',
+            schemaVersion: '1.0.0',
+            revision: 1,
             stats: {
                 maxAcceleration: 1.1,
                 maxDeceleration: 1.2,
@@ -76,7 +77,8 @@
             name: 'Bus Rapid Transit',
             description: 'High-capacity bus for dedicated rapid transit corridors',
             source: 'builtin',
-            version: '1.0.1',
+            schemaVersion: '1.0.0',
+            revision: 1,
             stats: {
                 maxAcceleration: 1.3,
                 maxDeceleration: 1.4,
@@ -107,7 +109,8 @@
             name: 'Monorail',
             description: 'Elevated monorail for scenic urban and resort transit',
             source: 'builtin',
-            version: '1.0.1',
+            schemaVersion: '1.0.0',
+            revision: 1,
             stats: {
                 maxAcceleration: 1.0,
                 maxDeceleration: 1.1,
@@ -138,7 +141,8 @@
             name: 'People Mover',
             description: 'Automated people mover for short-distance elevated transit',
             source: 'builtin',
-            version: '1.0.1',
+            schemaVersion: '1.0.0',
+            revision: 1,
             stats: {
                 maxAcceleration: 0.9,
                 maxDeceleration: 1.0,
@@ -165,6 +169,12 @@
             tags: []
         }
     ];
+
+    // Mode-definition schema version. Independent of MOD_VERSION; bumps only
+    // when the mode JSON shape changes (e.g. a new required stat, a renamed
+    // field). The major component gates import compatibility.
+    var SCHEMA_VERSION = '1.0.0';
+    var SCHEMA_MAJOR = 1;
 
     const REQUIRED_STATS = [
         'maxAcceleration', 'maxDeceleration', 'maxSpeed', 'maxSpeedLocalStation',
@@ -228,15 +238,25 @@
     // ─── REGISTRY ────────────────────────────────────────────────────────────────
     // Storage keys (all under mode-manager: prefix in localStorage):
     //   modes-imported          → ModeDefinition[]      global user-imported library
-    //   committed:<saveName>    → { id, locked }[]      modes added to a specific save
-    //   committed:__unsaved__   → { id, locked }[]      modes added in a brand-new game
+    //   committed:<saveName>    → CommittedEntry[]      modes added to a specific save
+    //   committed:__unsaved__   → CommittedEntry[]      modes added in a brand-new game
     //                                                   before its first save; lazily
     //                                                   migrated into committed:<name>
     //                                                   when a save name first appears
     //   installed-version       → string                 last MOD_VERSION run on this
     //                                                    machine; drives schema migrations
+    //
+    // CommittedEntry = { id, locked, definition }
+    //   .definition is a snapshot of the library entry captured at commit
+    //   time. Snapshots are how we promise save stability: future library
+    //   edits don't change what an existing save plays with.
 
     var UNSAVED_KEY = 'committed:__unsaved__';
+
+    function cloneDefinition(def) {
+        // JSON round-trip is sufficient: mode definitions are pure data.
+        return JSON.parse(JSON.stringify(def));
+    }
 
     function currentBucketKey() {
         var name = null;
@@ -291,12 +311,18 @@
 
         commitMode: function (id) {
             var key = currentBucketKey();
-            return storage.get(key, []).then(function (committed) {
-                var list = Array.isArray(committed) ? committed : [];
-                if (!list.find(function (c) { return c.id === id; })) {
-                    list.push({ id: id, locked: false });
-                    return storage.set(key, list);
+            return Promise.all([storage.get(key, []), registry.getLibrary()]).then(function (results) {
+                var list = Array.isArray(results[0]) ? results[0] : [];
+                if (list.find(function (c) { return c.id === id; })) return;
+                var def = results[1].find(function (m) { return m.id === id; });
+                if (!def) {
+                    return Promise.reject(new Error('Mode "' + id + '" is not in the library'));
                 }
+                // Snapshot-at-commit: the save's bucket holds a deep copy of
+                // the library entry as it was at this moment. Future library
+                // edits or removals can't change what this save plays with.
+                list.push({ id: id, locked: false, definition: cloneDefinition(def) });
+                return storage.set(key, list);
             });
         },
 
@@ -315,16 +341,22 @@
 
         lockUsed: function (usedIds) {
             var key = currentBucketKey();
-            return storage.get(key, []).then(function (committed) {
-                var list = Array.isArray(committed) ? committed : [];
+            return Promise.all([storage.get(key, []), registry.getLibrary()]).then(function (results) {
+                var list = Array.isArray(results[0]) ? results[0] : [];
+                var library = results[1];
                 var seen = {};
                 list.forEach(function (c) { seen[c.id] = true; });
                 // Self-heal: a route in the save references a mode not in our
-                // bucket → re-commit it as locked. Without this, existing saves
-                // would lose their committed list during the global→per-save
-                // key migration and routes would lose their train types.
+                // bucket → re-commit it as locked, snapshotting from the live
+                // library so the save is registration-safe on the next load.
                 Object.keys(usedIds).forEach(function (id) {
-                    if (!seen[id]) list.push({ id: id, locked: true });
+                    if (seen[id]) return;
+                    var def = library.find(function (m) { return m.id === id; });
+                    if (!def) {
+                        console.warn('[Mode Manager] Route uses mode "' + id + '" but no library definition exists — skipping snapshot');
+                        return;
+                    }
+                    list.push({ id: id, locked: true, definition: cloneDefinition(def) });
                 });
                 return storage.set(key, list.map(function (c) {
                     return Object.assign({}, c, { locked: c.locked || !!usedIds[c.id] });
@@ -385,9 +417,91 @@
                 return { error: '"tags" must be an array of strings.' };
             }
 
+            // schemaVersion describes the JSON shape, not the mod release.
+            // Default to current when missing. Bumps to the major component
+            // signal a breaking schema change that this mod build can't read.
+            if ('schemaVersion' in def) {
+                if (typeof def.schemaVersion !== 'string' || !/^\d+\.\d+\.\d+$/.test(def.schemaVersion)) {
+                    return { error: '"schemaVersion" must be a string like "1.0.0".' };
+                }
+                var defMajor = parseInt(def.schemaVersion.split('.')[0], 10);
+                if (defMajor > SCHEMA_MAJOR) {
+                    return { error: 'Definition schemaVersion ' + def.schemaVersion + ' is newer than this mod supports (max ' + SCHEMA_MAJOR + '.x.x).' };
+                }
+            } else {
+                def.schemaVersion = SCHEMA_VERSION;
+            }
+            // revision is a free-form counter the user (or future edit UI)
+            // bumps when changing stats. Snapshots carry it so saves can
+            // surface "you're playing on rev 2; library has rev 3" later.
+            if ('revision' in def) {
+                if (typeof def.revision !== 'number' || def.revision < 1 || (def.revision | 0) !== def.revision) {
+                    return { error: '"revision" must be a positive integer.' };
+                }
+            } else {
+                def.revision = 1;
+            }
+
             return { def: def };
         }
     };
+
+    // ─── SCHEMA MIGRATIONS ───────────────────────────────────────────────────────
+    // Runs after the registry is defined so migrations can use it. Gated by
+    // installedVersionAtLoad (captured before any storage writes) so each
+    // version transition only fires once per machine. The MOD_VERSION marker
+    // is written at the end so a crash mid-migration leaves the marker stale
+    // and we retry next launch.
+
+    function runSchemaMigrations() {
+        if (installedVersionAtLoad === MOD_VERSION) return Promise.resolve();
+
+        var chain = Promise.resolve();
+
+        // 1.0.1 → 1.0.2: snapshot-at-commit. Walk every committed:* bucket
+        // and embed each entry's current library definition. Without this,
+        // the next save load sees entries with no .definition and falls
+        // back to libraryMap — which works, but defeats the snapshot
+        // guarantee for pre-existing commits.
+        if (installedVersionAtLoad !== MOD_VERSION) {
+            chain = chain.then(function () {
+                return Promise.all([storage.keys(), registry.getLibrary()]).then(function (results) {
+                    var allKeys = results[0];
+                    var library = results[1];
+                    var libraryMap = {};
+                    library.forEach(function (m) { libraryMap[m.id] = m; });
+
+                    var bucketKeys = allKeys.filter(function (k) { return k.indexOf('committed:') === 0; });
+                    return Promise.all(bucketKeys.map(function (key) {
+                        return storage.get(key, []).then(function (raw) {
+                            if (!Array.isArray(raw) || raw.length === 0) return;
+                            var changed = false;
+                            var next = raw.map(function (entry) {
+                                if (entry && entry.definition) return entry;
+                                var def = entry && libraryMap[entry.id];
+                                if (!def) {
+                                    console.warn('[Mode Manager] Migration: bucket "' + key + '" entry "' + (entry && entry.id) + '" has no library definition — leaving without snapshot');
+                                    return entry;
+                                }
+                                changed = true;
+                                return Object.assign({}, entry, { definition: cloneDefinition(def) });
+                            });
+                            if (changed) return storage.set(key, next);
+                        });
+                    }));
+                });
+            });
+        }
+
+        return chain
+            .then(function () {
+                try { localStorage.setItem(INSTALLED_VERSION_KEY, MOD_VERSION); } catch (e) {}
+            })
+            .catch(function (err) {
+                console.error('[Mode Manager] Schema migration failed:', err);
+                // Leave the marker stale so we retry next launch.
+            });
+    }
 
     // ─── UI ──────────────────────────────────────────────────────────────────────
     // All React access is deferred to render time via api.utils.React so that
@@ -616,7 +730,9 @@
 
         // ── This Save tab ────────────────────────────────────────────
         var committedEntries = committed.map(function (c) {
-            return { id: c.id, locked: c.locked, def: library.find(function (m) { return m.id === c.id; }) };
+            // Snapshot wins: this save committed against c.definition, so
+            // display from it. Library lookup is just a legacy fallback.
+            return { id: c.id, locked: c.locked, def: c.definition || library.find(function (m) { return m.id === c.id; }) };
         });
         var available = library.filter(function (m) { return !committedIds[m.id]; });
 
@@ -696,12 +812,13 @@
                 panelRegistered = true;
             }
 
-            // Async: register committed train types then refresh lock state.
-            // Route ids are read first so that any mode in use by an existing
-            // save but missing from our committed bucket (e.g. after the v2
-            // per-save key migration) gets registered before the engine tries
-            // to instantiate trains for it.
-            Promise.all([registry.getLibrary(), registry.getCommitted()])
+            // Async: run any pending schema migrations, then register
+            // committed train types and refresh lock state. Route ids are
+            // read first so that any mode in use by an existing save but
+            // missing from our committed bucket gets registered before the
+            // engine tries to instantiate trains for it.
+            runSchemaMigrations()
+                .then(function () { return Promise.all([registry.getLibrary(), registry.getCommitted()]); })
                 .then(function (results) {
                     var library   = results[0];
                     var committed = results[1];
@@ -732,14 +849,19 @@
 
                     var registered = 0;
                     toRegister.forEach(function (entry) {
-                        var def = libraryMap[entry.id];
+                        // Prefer the per-save snapshot. Fall back to the live
+                        // library only for legacy entries (pre-1.0.2 buckets
+                        // that haven't been migrated yet, or self-healed
+                        // entries the migration couldn't snapshot).
+                        var def = entry.definition || libraryMap[entry.id];
                         if (!def) {
-                            console.warn('[Mode Manager] Committed mode "' + entry.id + '" not in library — skipping');
+                            console.warn('[Mode Manager] Committed mode "' + entry.id + '" has no snapshot and is not in the library — skipping');
                             return;
                         }
                         var trainConfig = Object.assign({}, def);
                         delete trainConfig.source;
-                        delete trainConfig.version;
+                        delete trainConfig.schemaVersion;
+                        delete trainConfig.revision;
                         delete trainConfig.tags;
                         try {
                             api.trains.registerTrainType(trainConfig);

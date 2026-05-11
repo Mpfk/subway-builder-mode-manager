@@ -1,4 +1,6 @@
 {
+  "schemaVersion": "1.0.0",
+  "revision": 1,
   "id": "people-mover",
   "name": "People Mover",
   "description": "Automated people mover for short-distance elevated transit",

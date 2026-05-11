@@ -1,4 +1,6 @@
 {
+  "schemaVersion": "1.0.0",
+  "revision": 1,
   "id": "light-rail",
   "name": "Light Rail",
   "description": "Multi-car light rail for medium-capacity urban corridors",

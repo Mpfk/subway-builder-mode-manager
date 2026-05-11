@@ -1,4 +1,6 @@
 {
+  "schemaVersion": "1.0.0",
+  "revision": 1,
   "id": "monorail",
   "name": "Monorail",
   "description": "Elevated monorail for scenic urban and resort transit",
