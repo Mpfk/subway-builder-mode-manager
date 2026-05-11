@@ -21,7 +21,7 @@
     // change to the on-disk storage layout requires a migration. Cheap
     // dependency-free migrations run inline below; ones that need BUILTINS
     // or the registry run later via runSchemaMigrations().
-    var MOD_VERSION = '1.0.6';
+    var MOD_VERSION = '1.0.7';
 
     function isVersionBefore(a, b) {
         // Returns true when semver string `a` is older than `b`. Null/empty
@@ -258,6 +258,16 @@
     //                                                   when a save name first appears
     //   installed-version       → string                last MOD_VERSION run on this
     //                                                   machine; drives schema migrations
+    //   pending-notification    → { msg, type }         transient toast queued by an
+    //                                                   action that triggers a hot
+    //                                                   reload; consumed once on the
+    //                                                   next onGameInit
+    //   reload-in-flight        → string (timestamp)    transient marker set by
+    //                                                   reloadMod() so the next
+    //                                                   onGameInit can distinguish
+    //                                                   self-triggered hot reloads
+    //                                                   (skip the __unsaved__ clear)
+    //                                                   from genuine session starts
     //
     // CommittedEntry = { id, locked, definition }
     //   .definition is a snapshot of the library entry captured at commit
@@ -699,9 +709,16 @@
             if (pendingMsg) {
                 localStorage.setItem('mode-manager:pending-notification', JSON.stringify({ msg: pendingMsg, type: pendingType || 'info' }));
             }
+            // Mark this hot-reload as self-triggered so the next onGameInit
+            // doesn't wipe __unsaved__: the user is mid-session and just made
+            // a commit; the new-game cleanup logic doesn't apply here.
+            try { localStorage.setItem('mode-manager:reload-in-flight', String(Date.now())); } catch (e) {}
             window.__modeManagerLoaded = false;
             api.reloadMods().catch(function (err) {
                 console.error('[Mode Manager] reloadMods failed:', err);
+                // Reload didn't happen — drop the marker so the next genuine
+                // session start doesn't skip its cleanup.
+                try { localStorage.removeItem('mode-manager:reload-in-flight'); } catch (e) {}
                 setActionError('Reload failed — ' + err.message);
             });
         }
@@ -957,17 +974,38 @@
 
     api.hooks.onGameInit(function () {
         try {
+            // Detect self-triggered hot reloads (e.g. just after a commit
+            // that called api.reloadMods). The marker is short-lived so a
+            // stale flag from a failed reload doesn't bleed into a future
+            // session — only honor it within 10s of being set, and clear
+            // it unconditionally on read.
+            var selfTriggered = false;
+            try {
+                var raw = localStorage.getItem('mode-manager:reload-in-flight');
+                if (raw !== null) {
+                    var ts = parseInt(raw, 10);
+                    selfTriggered = !isNaN(ts) && (Date.now() - ts) < 10000;
+                    localStorage.removeItem('mode-manager:reload-in-flight');
+                }
+            } catch (e) {}
+
             // If this load is a brand-new game (no save name yet), drop any
             // __unsaved__ leftover from an abandoned prior session before we
             // do anything else. The user quit the previous map without saving
             // it, so its mod commits don't apply to anything — letting them
             // bleed into this fresh start would surprise the user. Done sync
             // so the cleanup runs before the panel can render stale data.
-            try {
-                if (api.gameState && typeof api.gameState.getSaveName === 'function' && !api.gameState.getSaveName()) {
-                    localStorage.removeItem('mode-manager:' + UNSAVED_KEY);
-                }
-            } catch (e) {}
+            //
+            // Skipped on self-triggered hot reloads: the user is still in the
+            // current session and just made a commit; wiping __unsaved__ here
+            // would erase the very entry they're trying to add.
+            if (!selfTriggered) {
+                try {
+                    if (api.gameState && typeof api.gameState.getSaveName === 'function' && !api.gameState.getSaveName()) {
+                        localStorage.removeItem('mode-manager:' + UNSAVED_KEY);
+                    }
+                } catch (e) {}
+            }
 
             // Register the panel once — addToolbarPanel appends a new button each
             // call, so calling it on every game load produces duplicate buttons.
