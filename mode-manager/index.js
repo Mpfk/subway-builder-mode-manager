@@ -340,7 +340,8 @@
         modeSubtitle: { fontSize: '11px', marginTop: '2px' },
         sectionLabel: { color: '#6b7280', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' },
         divider:      { borderTop: '1px solid #374151', paddingTop: '12px', marginTop: '4px' },
-        iconBtn:      { background: 'none', border: 'none', cursor: 'pointer', fontSize: '15px', padding: '0 4px' },
+        iconBtn:      { background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
+        bannerFlex:   { display: 'flex', alignItems: 'center', gap: '6px' },
         addBtn:       { padding: '4px 10px', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '11px', background: '#1d4ed8' },
         importBtn:    { marginTop: '6px', padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '12px' },
         textarea:     { width: '100%', height: '80px', background: '#111827', border: '1px solid #374151', borderRadius: '4px', color: '#f9fafb', padding: '6px', fontSize: '11px', fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box' },
@@ -353,6 +354,18 @@
     function ModeManagerPanel() {
         var React = api.utils.React;
         var h = React.createElement;
+
+        // Lucide icons exposed by the host. Fall back to text glyphs if the
+        // curated set ever drops one of these names.
+        var icons = (api.utils && api.utils.icons) || {};
+        var Trash2Icon         = icons.Trash2;
+        var LockIcon           = icons.Lock;
+        var XIcon              = icons.X;
+        var AlertTriangleIcon  = icons.AlertTriangle;
+        var AlertCircleIcon    = icons.AlertCircle;
+        function icon(Comp, fallback, props) {
+            return Comp ? h(Comp, props || { size: 16 }) : fallback;
+        }
 
         // Guard: hooks required
         if (typeof React.useState !== 'function' || typeof React.useEffect !== 'function') {
@@ -470,11 +483,15 @@
 
         // Shared banners
         var loadErrorBanner = loadError
-            ? h('div', { style: STYLES.warnBox }, '⚠ ' + loadError)
+            ? h('div', { style: Object.assign({}, STYLES.warnBox, STYLES.bannerFlex) },
+                icon(AlertTriangleIcon, '⚠', { size: 14 }),
+                h('span', null, loadError))
             : null;
 
         var actionErrorBanner = actionError
-            ? h('div', { style: Object.assign({}, STYLES.warnBox, { color: '#ef4444' }) }, '✕ ' + actionError)
+            ? h('div', { style: Object.assign({}, STYLES.warnBox, STYLES.bannerFlex, { color: '#ef4444' }) },
+                icon(AlertCircleIcon, '✕', { size: 14 }),
+                h('span', null, actionError))
             : null;
 
         // Tab bar
@@ -508,7 +525,7 @@
                             color: isCommitted ? '#374151' : '#ef4444',
                             cursor: isCommitted ? 'not-allowed' : 'pointer'
                         })
-                      }, '🗑️')
+                      }, icon(Trash2Icon, '🗑️'))
                     : null
             );
         });
@@ -556,12 +573,12 @@
                             ? h('span', {
                                 title: 'Locked to prevent breaking game save',
                                 style: Object.assign({}, STYLES.iconBtn, { color: '#f59e0b', cursor: 'default' })
-                              }, '🔒')
+                              }, icon(LockIcon, '🔒'))
                             : h('button', {
                                 title: 'Remove from this game',
                                 onClick: function () { handleRemoveCommitted(entry.id); },
                                 style: Object.assign({}, STYLES.iconBtn, { color: '#ef4444' })
-                              }, '✕')
+                              }, icon(XIcon, '✕'))
                     );
                 })
               );
