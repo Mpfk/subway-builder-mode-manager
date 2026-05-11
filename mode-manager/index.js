@@ -21,7 +21,7 @@
     // change to the on-disk storage layout requires a migration. Cheap
     // dependency-free migrations run inline below; ones that need BUILTINS
     // or the registry run later via runSchemaMigrations().
-    var MOD_VERSION = '1.0.5';
+    var MOD_VERSION = '1.0.6';
 
     function isVersionBefore(a, b) {
         // Returns true when semver string `a` is older than `b`. Null/empty
@@ -182,7 +182,7 @@
     // when the mode JSON shape changes (e.g. a new required stat, a renamed
     // field). The major component gates import compatibility.
     var SCHEMA_VERSION = '1.0.0';
-    var SCHEMA_MAJOR = 1;
+    var SCHEMA_MAJOR = parseInt(SCHEMA_VERSION.split('.')[0], 10);
 
     const REQUIRED_STATS = [
         'maxAcceleration', 'maxDeceleration', 'maxSpeed', 'maxSpeedLocalStation',
@@ -463,7 +463,7 @@
                 }
                 var defMajor = parseInt(def.schemaVersion.split('.')[0], 10);
                 if (defMajor > SCHEMA_MAJOR) {
-                    return { error: 'Definition schemaVersion ' + def.schemaVersion + ' is newer than this mod supports (max ' + SCHEMA_MAJOR + '.x.x).' };
+                    return { error: 'Definition schemaVersion ' + def.schemaVersion + ' is newer than this mod supports (max ' + SCHEMA_MAJOR + '.x.x; current: ' + SCHEMA_VERSION + ').' };
                 }
             } else {
                 def.schemaVersion = SCHEMA_VERSION;
@@ -957,6 +957,18 @@
 
     api.hooks.onGameInit(function () {
         try {
+            // If this load is a brand-new game (no save name yet), drop any
+            // __unsaved__ leftover from an abandoned prior session before we
+            // do anything else. The user quit the previous map without saving
+            // it, so its mod commits don't apply to anything — letting them
+            // bleed into this fresh start would surprise the user. Done sync
+            // so the cleanup runs before the panel can render stale data.
+            try {
+                if (api.gameState && typeof api.gameState.getSaveName === 'function' && !api.gameState.getSaveName()) {
+                    localStorage.removeItem('mode-manager:' + UNSAVED_KEY);
+                }
+            } catch (e) {}
+
             // Register the panel once — addToolbarPanel appends a new button each
             // call, so calling it on every game load produces duplicate buttons.
             if (!panelRegistered) {
@@ -1005,7 +1017,13 @@
                     committed.forEach(function (c) { inCommitted[c.id] = true; });
                     var toRegister = committed.slice();
                     Object.keys(usedIds).forEach(function (id) {
-                        if (!inCommitted[id]) toRegister.push({ id: id, locked: true });
+                        if (inCommitted[id]) return;
+                        // Snapshot inline so this load and the persisted bucket
+                        // (written below by lockUsed) see the same definition.
+                        var def = libraryMap[id];
+                        toRegister.push(def
+                            ? { id: id, locked: true, definition: cloneDefinition(def) }
+                            : { id: id, locked: true });
                     });
 
                     var registered = 0;
@@ -1043,6 +1061,16 @@
                             api.ui.showNotification(pending.msg, pending.type);
                         }
                     } catch (e) {}
+
+                    // For named-save loads, getCommitted's lazy migration above
+                    // has already moved any pending __unsaved__ data into the
+                    // current save's bucket. Anything still here belongs to a
+                    // *different* abandoned new-game session and is orphaned —
+                    // drop it so it doesn't migrate into some unrelated save
+                    // later. (For new-game loads we already cleared sync above.)
+                    if (currentBucketKey() !== UNSAVED_KEY) {
+                        return storage.delete(UNSAVED_KEY).catch(function () {});
+                    }
                 })
                 .catch(function (err) {
                     console.error('[Mode Manager] Mode registration error:', err);
@@ -1064,9 +1092,8 @@
     }
 
     // ─── REAL-TIME LOCK HOOKS ────────────────────────────────────────────────────
-    // Lock a mode the moment tracks are built or a route is created, rather than
-    // waiting for the next game reload. The first event is logged in full so we
-    // can confirm the Track/Route field names used to identify the train type.
+    // Lock a mode the moment tracks are built or a route is created, rather
+    // than waiting for the next game reload.
 
     api.hooks.onTrackBuilt(function (tracks) {
         if (!Array.isArray(tracks) || tracks.length === 0) return;
@@ -1086,13 +1113,8 @@
         });
     });
 
-    var routeShapeLogged = false;
     api.hooks.onRouteCreated(function (route) {
         if (!route) return;
-        if (!routeShapeLogged) {
-            console.log('[Mode Manager] onRouteCreated — Route object shape:', route);
-            routeShapeLogged = true;
-        }
         var typeId = route.trackType || route.trainTypeId || route.trainType;
         if (typeId) {
             registry.lockMode(typeId)
