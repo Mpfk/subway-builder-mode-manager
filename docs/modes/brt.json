@@ -1,0 +1,29 @@
+{
+  "id": "brt",
+  "name": "Bus Rapid Transit",
+  "description": "High-capacity bus for dedicated rapid transit corridors",
+  "stats": {
+    "maxAcceleration": 1.3,
+    "maxDeceleration": 1.4,
+    "maxSpeed": 25,
+    "maxSpeedLocalStation": 8,
+    "capacityPerCar": 80,
+    "carLength": 30,
+    "minCars": 1,
+    "maxCars": 1,
+    "carsPerCarSet": 1,
+    "carCost": 350000,
+    "trainWidth": 2.6,
+    "minStationLength": 30,
+    "maxStationLength": 30,
+    "baseTrackCost": 5000,
+    "baseStationCost": 2000000,
+    "trainOperationalCostPerHour": 60,
+    "carOperationalCostPerHour": 60,
+    "scissorsCrossoverCost": 500000
+  },
+  "compatibleTrackTypes": ["brt"],
+  "appearance": { "color": "#ef4444" },
+  "allowAtGradeRoadCrossing": true,
+  "tags": ["bus"]
+}

@@ -401,7 +401,6 @@
         tabInactive:  { borderBottom: '2px solid transparent', color: '#6b7280' },
         row:          { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #1f2937' },
         modeName:     { color: '#f9fafb', fontSize: '13px', fontWeight: '500' },
-        modeSubtitle: { fontSize: '11px', marginTop: '2px' },
         sectionLabel: { color: '#6b7280', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' },
         divider:      { borderTop: '1px solid #374151', paddingTop: '12px', marginTop: '4px' },
         iconBtn:      { background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
@@ -575,10 +574,7 @@
             var isCommitted = !!committedIds[mode.id];
             return h('div', { key: mode.id, style: STYLES.row },
                 h('div', null,
-                    h('div', { style: STYLES.modeName }, mode.name),
-                    h('div', { style: Object.assign({}, STYLES.modeSubtitle, { color: '#6b7280' }) },
-                        mode.source === 'builtin' ? 'Built-in' : 'Imported'
-                    )
+                    h('div', { style: STYLES.modeName }, mode.name)
                 ),
                 mode.source === 'imported'
                     ? h('button', {
