@@ -22,10 +22,20 @@
     "baseStationCost": 2000000,
     "trainOperationalCostPerHour": 60,
     "carOperationalCostPerHour": 60,
-    "scissorsCrossoverCost": 500000
+    "scissorsCrossoverCost": 500000,
+    "stopTimeSeconds": 20,
+    "maxLateralAcceleration": 1.5,
+    "parallelTrackSpacing": 3,
+    "trackClearance": 2,
+    "minTurnRadius": 8,
+    "minStationTurnRadius": 20,
+    "maxSlopePercentage": 8,
+    "trackMaintenanceCostPerMeter": 100,
+    "stationMaintenanceCostPerYear": 5000
   },
   "compatibleTrackTypes": ["brt"],
   "appearance": { "color": "#ef4444" },
   "allowAtGradeRoadCrossing": true,
+  "elevationMultipliers": { "AT_GRADE": 1, "ELEVATED": 8, "CUT_AND_COVER": 12 },
   "tags": ["bus"]
 }

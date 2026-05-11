@@ -22,10 +22,20 @@
     "baseStationCost": 6000000,
     "trainOperationalCostPerHour": 120,
     "carOperationalCostPerHour": 30,
-    "scissorsCrossoverCost": 2500000
+    "scissorsCrossoverCost": 2500000,
+    "stopTimeSeconds": 18,
+    "maxLateralAcceleration": 1.8,
+    "parallelTrackSpacing": 4,
+    "trackClearance": 2,
+    "minTurnRadius": 10,
+    "minStationTurnRadius": 20,
+    "maxSlopePercentage": 7,
+    "trackMaintenanceCostPerMeter": 400,
+    "stationMaintenanceCostPerYear": 20000
   },
   "compatibleTrackTypes": ["tram"],
   "appearance": { "color": "#10b981" },
   "allowAtGradeRoadCrossing": true,
+  "elevationMultipliers": { "AT_GRADE": 1, "ELEVATED": 5, "CUT_AND_COVER": 8 },
   "tags": ["rail"]
 }

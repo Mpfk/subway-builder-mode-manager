@@ -21,7 +21,7 @@
     // change to the on-disk storage layout requires a migration. Cheap
     // dependency-free migrations run inline below; ones that need BUILTINS
     // or the registry run later via runSchemaMigrations().
-    var MOD_VERSION = '1.0.7';
+    var MOD_VERSION = '1.0.8';
 
     function isVersionBefore(a, b) {
         // Returns true when semver string `a` is older than `b`. Null/empty
@@ -76,11 +76,21 @@
                 baseStationCost: 5000000,
                 trainOperationalCostPerHour: 100,
                 carOperationalCostPerHour: 20,
-                scissorsCrossoverCost: 2000000
+                scissorsCrossoverCost: 2000000,
+                stopTimeSeconds: 20,
+                maxLateralAcceleration: 1.5,
+                parallelTrackSpacing: 3,
+                trackClearance: 2,
+                minTurnRadius: 5,
+                minStationTurnRadius: 15,
+                maxSlopePercentage: 6,
+                trackMaintenanceCostPerMeter: 200,
+                stationMaintenanceCostPerYear: 10000
             },
             compatibleTrackTypes: ['tram'],
             appearance: { color: '#f59e0b' },
             allowAtGradeRoadCrossing: true,
+            elevationMultipliers: { AT_GRADE: 1, ELEVATED: 4, CUT_AND_COVER: 6 },
             tags: []
         },
         {
@@ -107,11 +117,21 @@
                 baseStationCost: 2000000,
                 trainOperationalCostPerHour: 60,
                 carOperationalCostPerHour: 60,
-                scissorsCrossoverCost: 500000
+                scissorsCrossoverCost: 500000,
+                stopTimeSeconds: 20,
+                maxLateralAcceleration: 1.5,
+                parallelTrackSpacing: 3,
+                trackClearance: 2,
+                minTurnRadius: 8,
+                minStationTurnRadius: 20,
+                maxSlopePercentage: 8,
+                trackMaintenanceCostPerMeter: 100,
+                stationMaintenanceCostPerYear: 5000
             },
             compatibleTrackTypes: ['brt'],
             appearance: { color: '#ef4444' },
             allowAtGradeRoadCrossing: true,
+            elevationMultipliers: { AT_GRADE: 1, ELEVATED: 8, CUT_AND_COVER: 12 },
             tags: ['bus']
         },
         {
@@ -138,11 +158,21 @@
                 baseStationCost: 8000000,
                 trainOperationalCostPerHour: 80,
                 carOperationalCostPerHour: 15,
-                scissorsCrossoverCost: 3000000
+                scissorsCrossoverCost: 3000000,
+                stopTimeSeconds: 12,
+                maxLateralAcceleration: 2,
+                parallelTrackSpacing: 4,
+                trackClearance: 2,
+                minTurnRadius: 15,
+                minStationTurnRadius: 25,
+                maxSlopePercentage: 5,
+                trackMaintenanceCostPerMeter: 500,
+                stationMaintenanceCostPerYear: 30000
             },
             compatibleTrackTypes: ['monorail'],
             appearance: { color: '#8b5cf6' },
             allowAtGradeRoadCrossing: false,
+            elevationMultipliers: { AT_GRADE: 1, ELEVATED: 4, CUT_AND_COVER: 8 },
             tags: []
         },
         {
@@ -169,14 +199,53 @@
                 baseStationCost: 4000000,
                 trainOperationalCostPerHour: 25,
                 carOperationalCostPerHour: 5,
-                scissorsCrossoverCost: 1500000
+                scissorsCrossoverCost: 1500000,
+                stopTimeSeconds: 8,
+                maxLateralAcceleration: 2,
+                parallelTrackSpacing: 3,
+                trackClearance: 2,
+                minTurnRadius: 10,
+                minStationTurnRadius: 12,
+                maxSlopePercentage: 8,
+                trackMaintenanceCostPerMeter: 300,
+                stationMaintenanceCostPerYear: 15000
             },
             compatibleTrackTypes: ['people-mover'],
             appearance: { color: '#3b82f6' },
             allowAtGradeRoadCrossing: false,
+            elevationMultipliers: { AT_GRADE: 1, ELEVATED: 3, CUT_AND_COVER: 5 },
             tags: []
         }
     ];
+
+    // Defaults for stats the host docs don't list but the engine uses for
+    // parallel/quad track preview generation, curve fitting, and cost
+    // calculations. Without these, parallel mode crashes with "coordinates
+    // must contain numbers" because the engine receives undefined as a
+    // distance-offset argument. These get merged UNDER any user-provided
+    // stats so existing values always win.
+    var STAT_DEFAULTS = {
+        stopTimeSeconds: 15,
+        maxLateralAcceleration: 1.5,
+        parallelTrackSpacing: 3,
+        trackClearance: 2,
+        minTurnRadius: 5,
+        minStationTurnRadius: 15,
+        maxSlopePercentage: 6,
+        trackMaintenanceCostPerMeter: 200,
+        stationMaintenanceCostPerYear: 10000
+    };
+
+    function withStatDefaults(def) {
+        // Merges STAT_DEFAULTS under def.stats so the engine always receives
+        // a complete config. Returns a deep copy — never mutates the input.
+        // Applied at snapshot time (commit / self-heal) so the snapshot is
+        // self-contained, and at registration as a defensive safety net for
+        // legacy snapshots written before this version.
+        var copy = cloneDefinition(def);
+        copy.stats = Object.assign({}, STAT_DEFAULTS, copy.stats || {});
+        return copy;
+    }
 
     // Mode-definition schema version. Independent of MOD_VERSION; bumps only
     // when the mode JSON shape changes (e.g. a new required stat, a renamed
@@ -368,7 +437,9 @@
                 // Snapshot-at-commit: the save's bucket holds a deep copy of
                 // the library entry as it was at this moment. Future library
                 // edits or removals can't change what this save plays with.
-                list.push({ id: id, locked: false, definition: cloneDefinition(def) });
+                // withStatDefaults fills any geometry stats the user's def
+                // omitted so the snapshot is registration-complete on its own.
+                list.push({ id: id, locked: false, definition: withStatDefaults(def) });
                 return storage.set(key, list);
             });
         },
@@ -403,7 +474,7 @@
                         console.warn('[Mode Manager] Route uses mode "' + id + '" but no library definition exists — skipping snapshot');
                         return;
                     }
-                    list.push({ id: id, locked: true, definition: cloneDefinition(def) });
+                    list.push({ id: id, locked: true, definition: withStatDefaults(def) });
                 });
                 return storage.set(key, list.map(function (c) {
                     return Object.assign({}, c, { locked: c.locked || !!usedIds[c.id] });
@@ -462,6 +533,31 @@
             }
             if ('tags' in def && (!Array.isArray(def.tags) || def.tags.some(function (t) { return typeof t !== 'string'; }))) {
                 return { error: '"tags" must be an array of strings.' };
+            }
+            // Optional geometry/cost stats the engine uses for parallel/quad
+            // preview, curve fitting, and maintenance costs. Missing keys are
+            // filled by STAT_DEFAULTS at snapshot/registration time, so we
+            // only validate types when present.
+            var optionalStats = ['stopTimeSeconds', 'maxLateralAcceleration', 'parallelTrackSpacing', 'trackClearance', 'minTurnRadius', 'minStationTurnRadius', 'maxSlopePercentage', 'trackMaintenanceCostPerMeter', 'stationMaintenanceCostPerYear'];
+            for (var i = 0; i < optionalStats.length; i++) {
+                var k = optionalStats[i];
+                if (k in def.stats && (typeof def.stats[k] !== 'number' || isNaN(def.stats[k]))) {
+                    return { error: '"stats.' + k + '" must be a number when present.' };
+                }
+            }
+            // Optional top-level field — keys map to elevation modes, values
+            // are cost multipliers. Game uses its own defaults if absent.
+            if ('elevationMultipliers' in def) {
+                if (!def.elevationMultipliers || typeof def.elevationMultipliers !== 'object' || Array.isArray(def.elevationMultipliers)) {
+                    return { error: '"elevationMultipliers" must be an object.' };
+                }
+                var emKeys = Object.keys(def.elevationMultipliers);
+                for (var j = 0; j < emKeys.length; j++) {
+                    var v = def.elevationMultipliers[emKeys[j]];
+                    if (typeof v !== 'number' || isNaN(v)) {
+                        return { error: '"elevationMultipliers.' + emKeys[j] + '" must be a number.' };
+                    }
+                }
             }
 
             // schemaVersion describes the JSON shape, not the mod release.
@@ -1060,7 +1156,7 @@
                         // (written below by lockUsed) see the same definition.
                         var def = libraryMap[id];
                         toRegister.push(def
-                            ? { id: id, locked: true, definition: cloneDefinition(def) }
+                            ? { id: id, locked: true, definition: withStatDefaults(def) }
                             : { id: id, locked: true });
                     });
 
@@ -1075,7 +1171,10 @@
                             console.warn('[Mode Manager] Committed mode "' + entry.id + '" has no snapshot and is not in the library — skipping');
                             return;
                         }
-                        var trainConfig = Object.assign({}, def);
+                        // withStatDefaults fills geometry stats the legacy
+                        // snapshot may have lacked (e.g. parallelTrackSpacing)
+                        // so parallel/quad track preview doesn't crash.
+                        var trainConfig = withStatDefaults(def);
                         delete trainConfig.schemaVersion;
                         delete trainConfig.revision;
                         delete trainConfig.tags;

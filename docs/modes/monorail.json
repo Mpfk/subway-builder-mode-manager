@@ -22,10 +22,20 @@
     "baseStationCost": 8000000,
     "trainOperationalCostPerHour": 80,
     "carOperationalCostPerHour": 15,
-    "scissorsCrossoverCost": 3000000
+    "scissorsCrossoverCost": 3000000,
+    "stopTimeSeconds": 12,
+    "maxLateralAcceleration": 2,
+    "parallelTrackSpacing": 4,
+    "trackClearance": 2,
+    "minTurnRadius": 15,
+    "minStationTurnRadius": 25,
+    "maxSlopePercentage": 5,
+    "trackMaintenanceCostPerMeter": 500,
+    "stationMaintenanceCostPerYear": 30000
   },
   "compatibleTrackTypes": ["monorail"],
   "appearance": { "color": "#8b5cf6" },
   "allowAtGradeRoadCrossing": false,
+  "elevationMultipliers": { "AT_GRADE": 1, "ELEVATED": 4, "CUT_AND_COVER": 8 },
   "tags": []
 }
