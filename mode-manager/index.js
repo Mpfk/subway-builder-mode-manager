@@ -236,28 +236,6 @@
         stationMaintenanceCostPerYear: 10000
     };
 
-    // ─── EDITOR CROSS-PANEL STATE ───────────────────────────────────────────────
-    // The editor lives in its own floating panel (separate React tree from the
-    // toolbar panel), so per-panel useState can't be shared. The target lives
-    // on `window` and panels coordinate via a custom event. The `def` inside
-    // a target is a deep-cloned working copy that uncontrolled form inputs
-    // mutate directly until the user saves.
-
-    var EDITOR_EVENT = 'mode-manager:editor-changed';
-
-    function getEditorTarget() {
-        return window.__modeManagerEditorTarget || null;
-    }
-
-    function setEditorTarget(target) {
-        window.__modeManagerEditorTarget = target;
-        try { window.dispatchEvent(new CustomEvent(EDITOR_EVENT)); } catch (e) {}
-    }
-
-    function clearEditorTarget() {
-        setEditorTarget(null);
-    }
-
     function withStatDefaults(def) {
         // Merges STAT_DEFAULTS under def.stats so the engine always receives
         // a complete config. Returns a deep copy — never mutates the input.
@@ -804,6 +782,7 @@
         var importErrorState = useState('');
         var actionErrorState = useState(null);
         var editModeState    = useState(false);
+        var editorTargetState = useState(null);
 
         var tab         = tabState[0];         var setTab         = tabState[1];
         var library     = libraryState[0];     var setLibrary     = libraryState[1];
@@ -813,6 +792,10 @@
         var importError = importErrorState[0]; var setImportError = importErrorState[1];
         var actionError = actionErrorState[0]; var setActionError = actionErrorState[1];
         var editMode    = editModeState[0];    var setEditMode    = editModeState[1];
+        // editorTarget is { mode: 'create' | 'edit', def } when the editor
+        // view is active, otherwise null. The panel renders the editor in
+        // place of the tab content while it's set.
+        var editorTarget = editorTargetState[0]; var setEditorTarget = editorTargetState[1];
 
         function reload() {
             setLoadError(null);
@@ -929,10 +912,8 @@
         function handleOpenEditor(mode) {
             setActionError(null);
             // Editing an existing mode: deep-clone so form edits don't mutate
-            // the live library entry until the user saves. Cross-panel state
-            // (window global + custom event) drives the floating editor panel.
+            // the live library entry until the user saves.
             setEditorTarget({ mode: 'edit', def: cloneDefinition(mode) });
-            try { api.ui.showNotification('Editing "' + mode.name + '" — open the Mode Editor panel', 'info'); } catch (e) {}
         }
 
         function handleOpenCreate() {
@@ -957,7 +938,33 @@
                     tags: []
                 }
             });
-            try { api.ui.showNotification('Creating new mode — open the Mode Editor panel', 'info'); } catch (e) {}
+        }
+
+        function handleEditorSave(def) {
+            setActionError(null);
+            // Bump revision on every successful edit. New modes start at 1
+            // (already set in handleOpenCreate); edits increment from the
+            // existing value. Snapshots in saves carry the revision they
+            // committed against, so a future "library has rev N" UI hint
+            // can compare cleanly.
+            var nextDef = Object.assign({}, def);
+            if (editorTarget && editorTarget.mode === 'edit') {
+                nextDef.revision = (typeof def.revision === 'number' ? def.revision : 0) + 1;
+            }
+            var op = editorTarget && editorTarget.mode === 'edit'
+                ? registry.updateMode(nextDef)
+                : registry.addMode(nextDef);
+            op.then(function () {
+                setEditorTarget(null);
+                reload();
+            }).catch(function (err) {
+                console.error('[Mode Manager] editor save failed:', err);
+                setActionError('Failed to save — ' + err.message);
+            });
+        }
+
+        function handleEditorCancel() {
+            setEditorTarget(null);
         }
 
         function handleImport() {
@@ -974,6 +981,210 @@
                     console.error('[Mode Manager] addMode failed:', err);
                     setImportError('Failed to save import — ' + err.message);
                 });
+        }
+
+        // ── Mode editor view ─────────────────────────────────────────
+        // Renders a full-panel form for create/edit when editorTarget is set.
+        // Stays inside the same panel surface (host has no programmatic
+        // open/close for separate panels), but visually replaces the tabs
+        // for an "in editor" feel until Cancel/Save returns to the library.
+        function renderEditor() {
+            var isEdit = editorTarget.mode === 'edit';
+            // Local mutable working copy. We do NOT use useState for each
+            // field — that'd require dozens of hooks. Instead, mutate the
+            // working copy directly and force re-render via a tick state
+            // when needed. Inputs are uncontrolled (defaultValue) and read
+            // their values only on save.
+            var working = editorTarget.def;
+
+            function setTopField(field, value) { working[field] = value; }
+            function setStatField(field, value) {
+                working.stats = working.stats || {};
+                if (value === '' || value === null || isNaN(value)) delete working.stats[field];
+                else working.stats[field] = value;
+            }
+            function setElevField(key, value) {
+                working.elevationMultipliers = working.elevationMultipliers || {};
+                if (value === '' || value === null || isNaN(value)) delete working.elevationMultipliers[key];
+                else working.elevationMultipliers[key] = value;
+            }
+
+            function makeStatGrid(fields) {
+                return h('div', { style: STYLES.formGrid }, fields.map(function (key) {
+                    var initial = working.stats && working.stats[key];
+                    return h('div', { key: key, style: STYLES.formField },
+                        h('label', { style: STYLES.formLabel }, key),
+                        h('input', {
+                            type: 'number',
+                            step: 'any',
+                            defaultValue: initial == null ? '' : initial,
+                            onChange: function (e) { setStatField(key, parseFloat(e.target.value)); },
+                            style: STYLES.formInput
+                        })
+                    );
+                }));
+            }
+
+            var perfStats   = ['maxAcceleration', 'maxDeceleration', 'maxSpeed', 'maxSpeedLocalStation', 'maxLateralAcceleration', 'maxSlopePercentage', 'stopTimeSeconds'];
+            var capStats    = ['capacityPerCar', 'carLength', 'minCars', 'maxCars', 'carsPerCarSet', 'trainWidth'];
+            var stationStats= ['minStationLength', 'maxStationLength', 'minStationTurnRadius'];
+            var trackStats  = ['parallelTrackSpacing', 'trackClearance', 'minTurnRadius'];
+            var costStats   = ['carCost', 'baseTrackCost', 'baseStationCost', 'scissorsCrossoverCost', 'trainOperationalCostPerHour', 'carOperationalCostPerHour', 'trackMaintenanceCostPerMeter', 'stationMaintenanceCostPerYear'];
+            var elevKeys    = ['AT_GRADE', 'ELEVATED', 'CUT_AND_COVER', 'STANDARD_TUNNEL', 'DEEP_BORE'];
+
+            function handleSubmit() {
+                // Round-trip through validateImport for consistent rules.
+                // Strip empty optional containers so they don't fail type
+                // checks on empty objects/arrays.
+                var clone = cloneDefinition(working);
+                if (clone.elevationMultipliers && Object.keys(clone.elevationMultipliers).length === 0) delete clone.elevationMultipliers;
+                if (Array.isArray(clone.tags) && clone.tags.length === 0) delete clone.tags;
+                var result = registry.validateImport(JSON.stringify(clone));
+                if (result.error) { setActionError(result.error); return; }
+                if (!isEdit) {
+                    var dup = library.find(function (m) { return m.id === result.def.id; });
+                    if (dup) { setActionError('A mode with id "' + result.def.id + '" already exists.'); return; }
+                }
+                handleEditorSave(result.def);
+            }
+
+            return h('div', null,
+                h('button', { onClick: handleEditorCancel, style: STYLES.editorBack }, '← Back to Library'),
+                h('div', { style: STYLES.editorTitle }, isEdit ? 'Edit: ' + (working.name || working.id) : 'Create Mode'),
+
+                h('div', { style: STYLES.formSection },
+                    h('div', { style: STYLES.sectionLabel }, 'General'),
+                    h('div', { style: STYLES.formField },
+                        h('label', { style: STYLES.formLabel }, 'id (lowercase, hyphens only)'),
+                        h('input', {
+                            type: 'text',
+                            defaultValue: working.id,
+                            readOnly: isEdit,
+                            onChange: function (e) { setTopField('id', e.target.value); },
+                            style: isEdit ? STYLES.formInputRO : STYLES.formInput
+                        })
+                    ),
+                    h('div', { style: { marginTop: '6px' } },
+                        h('label', { style: STYLES.formLabel }, 'name'),
+                        h('input', {
+                            type: 'text',
+                            defaultValue: working.name,
+                            onChange: function (e) { setTopField('name', e.target.value); },
+                            style: STYLES.formInput
+                        })
+                    ),
+                    h('div', { style: { marginTop: '6px' } },
+                        h('label', { style: STYLES.formLabel }, 'description'),
+                        h('input', {
+                            type: 'text',
+                            defaultValue: working.description,
+                            onChange: function (e) { setTopField('description', e.target.value); },
+                            style: STYLES.formInput
+                        })
+                    )
+                ),
+
+                h('div', { style: STYLES.formSection },
+                    h('div', { style: STYLES.sectionLabel }, 'Track Compatibility'),
+                    h('div', { style: STYLES.formField },
+                        h('label', { style: STYLES.formLabel }, 'compatibleTrackTypes (comma-separated)'),
+                        h('input', {
+                            type: 'text',
+                            defaultValue: (working.compatibleTrackTypes || []).join(', '),
+                            onChange: function (e) {
+                                working.compatibleTrackTypes = e.target.value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+                            },
+                            style: STYLES.formInput
+                        })
+                    ),
+                    h('div', { style: { marginTop: '6px' } },
+                        h('label', { style: STYLES.formLabel }, 'tags (comma-separated, optional)'),
+                        h('input', {
+                            type: 'text',
+                            defaultValue: (working.tags || []).join(', '),
+                            onChange: function (e) {
+                                working.tags = e.target.value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+                            },
+                            style: STYLES.formInput
+                        })
+                    ),
+                    h('label', { style: STYLES.formCheckRow },
+                        h('input', {
+                            type: 'checkbox',
+                            defaultChecked: !!working.allowAtGradeRoadCrossing,
+                            onChange: function (e) { setTopField('allowAtGradeRoadCrossing', e.target.checked); }
+                        }),
+                        h('span', { style: { color: '#9ca3af', fontSize: '11px' } }, 'allowAtGradeRoadCrossing')
+                    )
+                ),
+
+                h('div', { style: STYLES.formSection },
+                    h('div', { style: STYLES.sectionLabel }, 'Appearance'),
+                    h('div', { style: { display: 'flex', alignItems: 'center', gap: '6px' } },
+                        h('input', {
+                            type: 'color',
+                            defaultValue: (working.appearance && working.appearance.color) || '#60a5fa',
+                            onChange: function (e) {
+                                working.appearance = working.appearance || {};
+                                working.appearance.color = e.target.value;
+                            },
+                            style: { width: '40px', height: '24px', background: 'transparent', border: '1px solid #374151', borderRadius: '4px', padding: 0 }
+                        }),
+                        h('input', {
+                            type: 'text',
+                            defaultValue: (working.appearance && working.appearance.color) || '#60a5fa',
+                            onChange: function (e) {
+                                working.appearance = working.appearance || {};
+                                working.appearance.color = e.target.value;
+                            },
+                            style: Object.assign({}, STYLES.formInput, { flex: 1 })
+                        })
+                    )
+                ),
+
+                h('div', { style: STYLES.formSection },
+                    h('div', { style: STYLES.sectionLabel }, 'Performance'),
+                    makeStatGrid(perfStats)
+                ),
+                h('div', { style: STYLES.formSection },
+                    h('div', { style: STYLES.sectionLabel }, 'Capacity'),
+                    makeStatGrid(capStats)
+                ),
+                h('div', { style: STYLES.formSection },
+                    h('div', { style: STYLES.sectionLabel }, 'Stations'),
+                    makeStatGrid(stationStats)
+                ),
+                h('div', { style: STYLES.formSection },
+                    h('div', { style: STYLES.sectionLabel }, 'Track Geometry'),
+                    makeStatGrid(trackStats)
+                ),
+                h('div', { style: STYLES.formSection },
+                    h('div', { style: STYLES.sectionLabel }, 'Costs'),
+                    makeStatGrid(costStats)
+                ),
+
+                h('div', { style: STYLES.formSection },
+                    h('div', { style: STYLES.sectionLabel }, 'Elevation Cost Multipliers (leave blank to use game default)'),
+                    h('div', { style: STYLES.formGrid }, elevKeys.map(function (key) {
+                        var initial = working.elevationMultipliers && working.elevationMultipliers[key];
+                        return h('div', { key: key, style: STYLES.formField },
+                            h('label', { style: STYLES.formLabel }, key),
+                            h('input', {
+                                type: 'number',
+                                step: 'any',
+                                defaultValue: initial == null ? '' : initial,
+                                onChange: function (e) { setElevField(key, parseFloat(e.target.value)); },
+                                style: STYLES.formInput
+                            })
+                        );
+                    }))
+                ),
+
+                h('div', { style: STYLES.editorActions },
+                    h('button', { onClick: handleEditorCancel, style: STYLES.secondaryBtn }, 'Cancel'),
+                    h('button', { onClick: handleSubmit, style: STYLES.primaryBtn }, isEdit ? 'Save Changes' : 'Create Mode')
+                )
+            );
         }
 
         // Shared banners
@@ -1154,292 +1365,26 @@
             availableSection
         );
 
+        // When the editor is open it replaces the tab content entirely.
+        // Action-error banner stays visible above so validation failures
+        // surface where the user expects them; the tab bar hides because
+        // there's only one screen relevant in editor mode. The wider
+        // minWidth nudges the host's toolbar-panel container to grow so
+        // the 2-column form grid has room — the panel was registered at
+        // 320px which is fine for the library but cramped for the editor.
+        if (editorTarget) {
+            return h('div', { style: Object.assign({}, STYLES.root, { minWidth: '480px' }) },
+                loadErrorBanner,
+                actionErrorBanner,
+                renderEditor()
+            );
+        }
+
         return h('div', { style: STYLES.root },
             loadErrorBanner,
             actionErrorBanner,
             tabBar,
             tab === 'save' ? saveTab : libraryTab
-        );
-    }
-
-    // ─── MODE EDITOR PANEL ───────────────────────────────────────────────────────
-    // Renders in its own floating panel (registered separately in init). Reads
-    // the active editor target from the cross-panel window global so opening
-    // the editor from the toolbar Library tab updates this panel even though
-    // they live in different React trees.
-
-    function ModeEditorPanel() {
-        var React = api.utils.React;
-        var h = React.createElement;
-        if (typeof React.useState !== 'function' || typeof React.useEffect !== 'function') {
-            return h('div', { style: STYLES.root },
-                h('p', { style: STYLES.errorBox }, 'Mode Editor requires React 16.8+. Please update Subway Builder.')
-            );
-        }
-        var useState = React.useState;
-        var useEffect = React.useEffect;
-
-        var targetState     = useState(getEditorTarget());
-        var libraryState    = useState(null);
-        var actionErrorState = useState(null);
-        var target      = targetState[0];     var setTarget      = targetState[1];
-        var library     = libraryState[0];    var setLibrary     = libraryState[1];
-        var actionError = actionErrorState[0]; var setActionError = actionErrorState[1];
-
-        useEffect(function () {
-            registry.getLibrary().then(setLibrary).catch(function () { setLibrary([]); });
-        }, []);
-
-        useEffect(function () {
-            function onChange() {
-                setTarget(getEditorTarget());
-                setActionError(null);
-                // Library may have changed (e.g. user just imported a mode);
-                // refetch so the duplicate-id guard sees current state.
-                registry.getLibrary().then(setLibrary).catch(function () {});
-            }
-            window.addEventListener(EDITOR_EVENT, onChange);
-            window.addEventListener('mode-manager:lock-changed', onChange);
-            return function () {
-                window.removeEventListener(EDITOR_EVENT, onChange);
-                window.removeEventListener('mode-manager:lock-changed', onChange);
-            };
-        }, []);
-
-        var icons = (api.utils && api.utils.icons) || {};
-        var AlertCircleIcon = icons.AlertCircle;
-        function icon(Comp, fallback, props) {
-            return Comp ? h(Comp, props || { size: 14 }) : fallback;
-        }
-
-        var actionErrorBanner = actionError
-            ? h('div', { style: Object.assign({}, STYLES.warnBox, STYLES.bannerFlex, { color: '#ef4444' }) },
-                icon(AlertCircleIcon, '✕'),
-                h('span', null, actionError))
-            : null;
-
-        if (!target) {
-            return h('div', { style: STYLES.root },
-                actionErrorBanner,
-                h('div', { style: STYLES.editorTitle }, 'Mode Editor'),
-                h('p', { style: { color: '#9ca3af', fontSize: '12px', lineHeight: '1.5' } },
-                    'No mode selected. From Mode Manager → Library, click ',
-                    h('span', { style: { color: '#f9fafb' } }, '✏️'),
-                    ' on a mode to edit it, or ',
-                    h('span', { style: { color: '#f9fafb' } }, 'Create Mode'),
-                    ' to start a new one.'
-                )
-            );
-        }
-
-        var isEdit = target.mode === 'edit';
-        var working = target.def;
-
-        function setTopField(field, value) { working[field] = value; }
-        function setStatField(field, value) {
-            working.stats = working.stats || {};
-            if (value === '' || value === null || isNaN(value)) delete working.stats[field];
-            else working.stats[field] = value;
-        }
-        function setElevField(key, value) {
-            working.elevationMultipliers = working.elevationMultipliers || {};
-            if (value === '' || value === null || isNaN(value)) delete working.elevationMultipliers[key];
-            else working.elevationMultipliers[key] = value;
-        }
-
-        function makeStatGrid(fields) {
-            return h('div', { style: STYLES.formGrid }, fields.map(function (key) {
-                var initial = working.stats && working.stats[key];
-                return h('div', { key: key, style: STYLES.formField },
-                    h('label', { style: STYLES.formLabel }, key),
-                    h('input', {
-                        type: 'number',
-                        step: 'any',
-                        defaultValue: initial == null ? '' : initial,
-                        onChange: function (e) { setStatField(key, parseFloat(e.target.value)); },
-                        style: STYLES.formInput
-                    })
-                );
-            }));
-        }
-
-        var perfStats   = ['maxAcceleration', 'maxDeceleration', 'maxSpeed', 'maxSpeedLocalStation', 'maxLateralAcceleration', 'maxSlopePercentage', 'stopTimeSeconds'];
-        var capStats    = ['capacityPerCar', 'carLength', 'minCars', 'maxCars', 'carsPerCarSet', 'trainWidth'];
-        var stationStats= ['minStationLength', 'maxStationLength', 'minStationTurnRadius'];
-        var trackStats  = ['parallelTrackSpacing', 'trackClearance', 'minTurnRadius'];
-        var costStats   = ['carCost', 'baseTrackCost', 'baseStationCost', 'scissorsCrossoverCost', 'trainOperationalCostPerHour', 'carOperationalCostPerHour', 'trackMaintenanceCostPerMeter', 'stationMaintenanceCostPerYear'];
-        var elevKeys    = ['AT_GRADE', 'ELEVATED', 'CUT_AND_COVER', 'STANDARD_TUNNEL', 'DEEP_BORE'];
-
-        function handleSubmit() {
-            var clone = cloneDefinition(working);
-            if (clone.elevationMultipliers && Object.keys(clone.elevationMultipliers).length === 0) delete clone.elevationMultipliers;
-            if (Array.isArray(clone.tags) && clone.tags.length === 0) delete clone.tags;
-            var result = registry.validateImport(JSON.stringify(clone));
-            if (result.error) { setActionError(result.error); return; }
-            if (!isEdit) {
-                var dup = (library || []).find(function (m) { return m.id === result.def.id; });
-                if (dup) { setActionError('A mode with id "' + result.def.id + '" already exists.'); return; }
-            }
-            // Bump revision on edits (not creates — those start at 1).
-            var nextDef = Object.assign({}, result.def);
-            if (isEdit) {
-                nextDef.revision = (typeof result.def.revision === 'number' ? result.def.revision : 0) + 1;
-            }
-            var op = isEdit ? registry.updateMode(nextDef) : registry.addMode(nextDef);
-            op.then(function () {
-                clearEditorTarget();
-                // Tell the toolbar panel to reload its library so the change
-                // shows up immediately in Saved Modes / Available defaults.
-                try { window.dispatchEvent(new CustomEvent('mode-manager:lock-changed')); } catch (e) {}
-            }).catch(function (err) {
-                console.error('[Mode Manager] editor save failed:', err);
-                setActionError('Failed to save — ' + err.message);
-            });
-        }
-
-        function handleCancel() {
-            clearEditorTarget();
-        }
-
-        // Key on the working def's id forces input remount when the user
-        // switches between modes (e.g. clicks Edit on a different row), so
-        // defaultValue picks up the new entries instead of being stale.
-        return h('div', { style: STYLES.root, key: (isEdit ? 'edit:' : 'create:') + (working.id || '__new__') },
-            actionErrorBanner,
-            h('div', { style: STYLES.editorTitle }, isEdit ? 'Edit: ' + (working.name || working.id) : 'Create Mode'),
-
-            h('div', { style: STYLES.formSection },
-                h('div', { style: STYLES.sectionLabel }, 'General'),
-                h('div', { style: STYLES.formField },
-                    h('label', { style: STYLES.formLabel }, 'id (lowercase, hyphens only)'),
-                    h('input', {
-                        type: 'text',
-                        defaultValue: working.id,
-                        readOnly: isEdit,
-                        onChange: function (e) { setTopField('id', e.target.value); },
-                        style: isEdit ? STYLES.formInputRO : STYLES.formInput
-                    })
-                ),
-                h('div', { style: { marginTop: '6px' } },
-                    h('label', { style: STYLES.formLabel }, 'name'),
-                    h('input', {
-                        type: 'text',
-                        defaultValue: working.name,
-                        onChange: function (e) { setTopField('name', e.target.value); },
-                        style: STYLES.formInput
-                    })
-                ),
-                h('div', { style: { marginTop: '6px' } },
-                    h('label', { style: STYLES.formLabel }, 'description'),
-                    h('input', {
-                        type: 'text',
-                        defaultValue: working.description,
-                        onChange: function (e) { setTopField('description', e.target.value); },
-                        style: STYLES.formInput
-                    })
-                )
-            ),
-
-            h('div', { style: STYLES.formSection },
-                h('div', { style: STYLES.sectionLabel }, 'Track Compatibility'),
-                h('div', { style: STYLES.formField },
-                    h('label', { style: STYLES.formLabel }, 'compatibleTrackTypes (comma-separated)'),
-                    h('input', {
-                        type: 'text',
-                        defaultValue: (working.compatibleTrackTypes || []).join(', '),
-                        onChange: function (e) {
-                            working.compatibleTrackTypes = e.target.value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-                        },
-                        style: STYLES.formInput
-                    })
-                ),
-                h('div', { style: { marginTop: '6px' } },
-                    h('label', { style: STYLES.formLabel }, 'tags (comma-separated, optional)'),
-                    h('input', {
-                        type: 'text',
-                        defaultValue: (working.tags || []).join(', '),
-                        onChange: function (e) {
-                            working.tags = e.target.value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-                        },
-                        style: STYLES.formInput
-                    })
-                ),
-                h('label', { style: STYLES.formCheckRow },
-                    h('input', {
-                        type: 'checkbox',
-                        defaultChecked: !!working.allowAtGradeRoadCrossing,
-                        onChange: function (e) { setTopField('allowAtGradeRoadCrossing', e.target.checked); }
-                    }),
-                    h('span', { style: { color: '#9ca3af', fontSize: '11px' } }, 'allowAtGradeRoadCrossing')
-                )
-            ),
-
-            h('div', { style: STYLES.formSection },
-                h('div', { style: STYLES.sectionLabel }, 'Appearance'),
-                h('div', { style: { display: 'flex', alignItems: 'center', gap: '6px' } },
-                    h('input', {
-                        type: 'color',
-                        defaultValue: (working.appearance && working.appearance.color) || '#60a5fa',
-                        onChange: function (e) {
-                            working.appearance = working.appearance || {};
-                            working.appearance.color = e.target.value;
-                        },
-                        style: { width: '40px', height: '24px', background: 'transparent', border: '1px solid #374151', borderRadius: '4px', padding: 0 }
-                    }),
-                    h('input', {
-                        type: 'text',
-                        defaultValue: (working.appearance && working.appearance.color) || '#60a5fa',
-                        onChange: function (e) {
-                            working.appearance = working.appearance || {};
-                            working.appearance.color = e.target.value;
-                        },
-                        style: Object.assign({}, STYLES.formInput, { flex: 1 })
-                    })
-                )
-            ),
-
-            h('div', { style: STYLES.formSection },
-                h('div', { style: STYLES.sectionLabel }, 'Performance'),
-                makeStatGrid(perfStats)
-            ),
-            h('div', { style: STYLES.formSection },
-                h('div', { style: STYLES.sectionLabel }, 'Capacity'),
-                makeStatGrid(capStats)
-            ),
-            h('div', { style: STYLES.formSection },
-                h('div', { style: STYLES.sectionLabel }, 'Stations'),
-                makeStatGrid(stationStats)
-            ),
-            h('div', { style: STYLES.formSection },
-                h('div', { style: STYLES.sectionLabel }, 'Track Geometry'),
-                makeStatGrid(trackStats)
-            ),
-            h('div', { style: STYLES.formSection },
-                h('div', { style: STYLES.sectionLabel }, 'Costs'),
-                makeStatGrid(costStats)
-            ),
-
-            h('div', { style: STYLES.formSection },
-                h('div', { style: STYLES.sectionLabel }, 'Elevation Cost Multipliers (leave blank to use game default)'),
-                h('div', { style: STYLES.formGrid }, elevKeys.map(function (key) {
-                    var initial = working.elevationMultipliers && working.elevationMultipliers[key];
-                    return h('div', { key: key, style: STYLES.formField },
-                        h('label', { style: STYLES.formLabel }, key),
-                        h('input', {
-                            type: 'number',
-                            step: 'any',
-                            defaultValue: initial == null ? '' : initial,
-                            onChange: function (e) { setElevField(key, parseFloat(e.target.value)); },
-                            style: STYLES.formInput
-                        })
-                    );
-                }))
-            ),
-
-            h('div', { style: STYLES.editorActions },
-                h('button', { onClick: handleCancel, style: STYLES.secondaryBtn }, 'Cancel'),
-                h('button', { onClick: handleSubmit, style: STYLES.primaryBtn }, isEdit ? 'Save Changes' : 'Create Mode')
-            )
         );
     }
 
@@ -1498,28 +1443,6 @@
                         return api.utils.React.createElement(ModeManagerPanel, null);
                     }
                 });
-                // Editor lives in a separate floating panel so it can be docked
-                // and resized independently from the main library/save UI.
-                // The host has no programmatic open/close, so the user has to
-                // open this panel via its toolbar/dock affordance the first
-                // time; once open it stays in sync via the EDITOR_EVENT.
-                if (typeof api.ui.addFloatingPanel === 'function') {
-                    api.ui.addFloatingPanel({
-                        id: 'mode-manager-editor',
-                        icon: 'PencilRuler',
-                        tooltip: 'Open Mode Editor',
-                        title: 'Mode Editor',
-                        defaultWidth: 360,
-                        defaultHeight: 600,
-                        minWidth: 280,
-                        minHeight: 320,
-                        render: function () {
-                            return api.utils.React.createElement(ModeEditorPanel, null);
-                        }
-                    });
-                } else {
-                    console.warn('[Mode Manager] api.ui.addFloatingPanel not available — Mode Editor disabled. Update Subway Builder to enable.');
-                }
                 panelRegistered = true;
             }
 
