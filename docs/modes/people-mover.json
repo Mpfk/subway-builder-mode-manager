@@ -1,0 +1,29 @@
+{
+  "id": "people-mover",
+  "name": "People Mover",
+  "description": "Automated people mover for short-distance elevated transit",
+  "stats": {
+    "maxAcceleration": 0.9,
+    "maxDeceleration": 1.0,
+    "maxSpeed": 12,
+    "maxSpeedLocalStation": 5,
+    "capacityPerCar": 40,
+    "carLength": 12,
+    "minCars": 2,
+    "maxCars": 6,
+    "carsPerCarSet": 2,
+    "carCost": 500000,
+    "trainWidth": 2.2,
+    "minStationLength": 24,
+    "maxStationLength": 72,
+    "baseTrackCost": 12000,
+    "baseStationCost": 4000000,
+    "trainOperationalCostPerHour": 25,
+    "carOperationalCostPerHour": 5,
+    "scissorsCrossoverCost": 1500000
+  },
+  "compatibleTrackTypes": ["people-mover"],
+  "appearance": { "color": "#3b82f6" },
+  "allowAtGradeRoadCrossing": false,
+  "tags": []
+}

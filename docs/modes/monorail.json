@@ -1,0 +1,29 @@
+{
+  "id": "monorail",
+  "name": "Monorail",
+  "description": "Elevated monorail for scenic urban and resort transit",
+  "stats": {
+    "maxAcceleration": 1.0,
+    "maxDeceleration": 1.1,
+    "maxSpeed": 30,
+    "maxSpeedLocalStation": 6,
+    "capacityPerCar": 30,
+    "carLength": 10,
+    "minCars": 4,
+    "maxCars": 6,
+    "carsPerCarSet": 2,
+    "carCost": 600000,
+    "trainWidth": 2.2,
+    "minStationLength": 40,
+    "maxStationLength": 60,
+    "baseTrackCost": 20000,
+    "baseStationCost": 8000000,
+    "trainOperationalCostPerHour": 80,
+    "carOperationalCostPerHour": 15,
+    "scissorsCrossoverCost": 3000000
+  },
+  "compatibleTrackTypes": ["monorail"],
+  "appearance": { "color": "#8b5cf6" },
+  "allowAtGradeRoadCrossing": false,
+  "tags": []
+}

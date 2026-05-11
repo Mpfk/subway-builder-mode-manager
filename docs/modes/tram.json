@@ -1,0 +1,29 @@
+{
+  "id": "tram",
+  "name": "Tram",
+  "description": "Lightweight tram for short-distance urban transit",
+  "stats": {
+    "maxAcceleration": 1.1,
+    "maxDeceleration": 1.2,
+    "maxSpeed": 15,
+    "maxSpeedLocalStation": 8,
+    "capacityPerCar": 60,
+    "carLength": 20,
+    "minCars": 1,
+    "maxCars": 3,
+    "carsPerCarSet": 1,
+    "carCost": 800000,
+    "trainWidth": 2.4,
+    "minStationLength": 20,
+    "maxStationLength": 60,
+    "baseTrackCost": 10000,
+    "baseStationCost": 5000000,
+    "trainOperationalCostPerHour": 100,
+    "carOperationalCostPerHour": 20,
+    "scissorsCrossoverCost": 2000000
+  },
+  "compatibleTrackTypes": ["tram"],
+  "appearance": { "color": "#f59e0b" },
+  "allowAtGradeRoadCrossing": true,
+  "tags": []
+}
