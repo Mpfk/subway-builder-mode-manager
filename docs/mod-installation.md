@@ -147,25 +147,22 @@ If both files are present, the mod is correctly installed.
 1. **Exit Subway Builder completely**
 2. **Reopen Subway Builder**
 
-Mode Manager is now active. Use the in-game mode picker panel to choose which transit modes are available in your network.
+Mode Manager is now active. Click the **Mode Manager** toolbar button in-game to open the panel.
 
 ### Using Mode Manager in the Game
 
-Once enabled:
-- Open the Mode Manager panel from the in-game UI
-- Toggle individual transit modes (Tram, BRT, Monorail, People Mover) on or off
-- Enabled modes appear as train type options when building or editing lines
+The panel has two tabs:
 
-## Hot Reload (Optional)
+**This Save** — manage modes for the current save:
+- Click **+ Add** next to any available mode to commit it to this save. The mod reloads automatically and the mode becomes available in the build panel immediately.
+- Click **✕** to remove a committed mode that has not been placed yet.
+- A **🔒** icon means the mode has placed tracks or active routes and cannot be removed. Removing it would break the save.
+- If you remove a mode, it will no longer be registered when the save is next loaded. The mode may still appear in the build panel for the current session — reload the save to clear it.
 
-Some versions of Subway Builder support hot reload, allowing you to edit mod code and see changes immediately:
-
-1. **Enable hot reload in Settings > Developer** (if available)
-2. **Edit `index.js`** in your `mode-manager` folder
-3. **Save the file**
-4. Changes may appear immediately (game-dependent)
-
-If hot reload is unavailable, you'll need to fully restart the game after editing mod code.
+**Library** — manage the global mode pool:
+- All built-in modes (Tram, BRT, Monorail, People Mover) are always present and cannot be removed.
+- Imported modes show a 🗑️ button and can be removed from the library if they are not committed to any save.
+- Paste a JSON mode definition into the **Import a Mode** field and click **Add Mode** to install a custom mode into the library.
 
 ## Disabling the Mod
 
