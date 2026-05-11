@@ -21,7 +21,7 @@
     // change to the on-disk storage layout requires a migration. Cheap
     // dependency-free migrations run inline below; ones that need BUILTINS
     // or the registry run later via runSchemaMigrations().
-    var MOD_VERSION = '1.0.4';
+    var MOD_VERSION = '1.0.5';
 
     function isVersionBefore(a, b) {
         // Returns true when semver string `a` is older than `b`. Null/empty
@@ -777,28 +777,20 @@
 
         // ── Library tab ──────────────────────────────────────────────
         // All entries are equal — built-ins seeded into the library at first
-        // install are indistinguishable from user-imported modes.
+        // install are indistinguishable from user-imported modes. Removal
+        // is always allowed: snapshot-at-commit means saves keep playing
+        // their committed modes regardless of library state, and removed
+        // built-ins reappear in "Available defaults" for one-click restore.
         var libraryRows = library.map(function (mode) {
-            var isCommitted = !!committedIds[mode.id];
-            // Removal is blocked while committed in the current save: even
-            // though snapshot-at-commit makes the save itself safe, dropping
-            // the library entry would orphan it for any *future* save that
-            // wants to add the same mode. For built-in ids the user can
-            // recover via Available defaults; for pure imports they'd need
-            // the source JSON.
             var libraryId = mode.id;
             return h('div', { key: libraryId, style: STYLES.row },
                 h('div', null,
                     h('div', { style: STYLES.modeName }, mode.name)
                 ),
                 h('button', {
-                    title: isCommitted ? 'Cannot remove — added to a game' : 'Remove from library',
-                    disabled: isCommitted,
+                    title: 'Remove from library',
                     onClick: function () { handleRemoveMode(libraryId); },
-                    style: Object.assign({}, STYLES.iconBtn, {
-                        color: isCommitted ? '#374151' : '#ef4444',
-                        cursor: isCommitted ? 'not-allowed' : 'pointer'
-                    })
+                    style: Object.assign({}, STYLES.iconBtn, { color: '#ef4444' })
                 }, icon(Trash2Icon, '🗑️'))
             );
         });
