@@ -602,6 +602,8 @@
         iconBtn:      { background: 'none', border: 'none', cursor: 'pointer', padding: '0 4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
         bannerFlex:   { display: 'flex', alignItems: 'center', gap: '6px' },
         addBtn:       { padding: '4px 10px', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '11px', background: '#1d4ed8' },
+        secondaryBtn: { padding: '4px 10px', border: '1px solid #374151', borderRadius: '4px', color: '#9ca3af', cursor: 'pointer', fontSize: '11px', background: 'transparent' },
+        toggleRow:    { display: 'flex', justifyContent: 'flex-end', marginTop: '6px' },
         importBtn:    { marginTop: '6px', padding: '6px 12px', border: 'none', borderRadius: '4px', fontSize: '12px' },
         textarea:     { width: '100%', height: '80px', background: '#111827', border: '1px solid #374151', borderRadius: '4px', color: '#f9fafb', padding: '6px', fontSize: '11px', fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box' },
         errorBox:     { color: '#ef4444', fontSize: '11px', margin: '4px 0' },
@@ -622,6 +624,7 @@
         var XIcon              = icons.X;
         var AlertTriangleIcon  = icons.AlertTriangle;
         var AlertCircleIcon    = icons.AlertCircle;
+        var ClipboardCopyIcon  = icons.ClipboardCopy;
         function icon(Comp, fallback, props) {
             return Comp ? h(Comp, props || { size: 16 }) : fallback;
         }
@@ -643,6 +646,7 @@
         var importTextState  = useState('');
         var importErrorState = useState('');
         var actionErrorState = useState(null);
+        var editModeState    = useState(false);
 
         var tab         = tabState[0];         var setTab         = tabState[1];
         var library     = libraryState[0];     var setLibrary     = libraryState[1];
@@ -651,6 +655,7 @@
         var importText  = importTextState[0];  var setImportText  = importTextState[1];
         var importError = importErrorState[0]; var setImportError = importErrorState[1];
         var actionError = actionErrorState[0]; var setActionError = actionErrorState[1];
+        var editMode    = editModeState[0];    var setEditMode    = editModeState[1];
 
         function reload() {
             setLoadError(null);
@@ -674,6 +679,13 @@
             window.addEventListener('mode-manager:lock-changed', onLockChanged);
             return function () { window.removeEventListener('mode-manager:lock-changed', onLockChanged); };
         }, []);
+
+        // Reset transient edit mode if the user removed every saved mode —
+        // otherwise a future import/restore would render with trash icons
+        // even though the user can no longer see the "Done" toggle.
+        useEffect(function () {
+            if (library && library.length === 0 && editMode) setEditMode(false);
+        }, [library, editMode]);
 
         // Loading state
         if (!library || !committed) {
@@ -722,6 +734,22 @@
                     console.error('[Mode Manager] removeMode failed:', err);
                     setActionError('Failed to remove — ' + err.message);
                 });
+        }
+
+        function handleCopyMode(def) {
+            setActionError(null);
+            var json = JSON.stringify(def, null, 2);
+            var nav = (typeof navigator !== 'undefined') ? navigator : null;
+            if (!nav || !nav.clipboard || typeof nav.clipboard.writeText !== 'function') {
+                setActionError('Clipboard unavailable in this context.');
+                return;
+            }
+            nav.clipboard.writeText(json).then(function () {
+                try { api.ui.showNotification('Copied "' + def.name + '" JSON to clipboard', 'success'); } catch (e) {}
+            }).catch(function (err) {
+                console.error('[Mode Manager] clipboard write failed:', err);
+                setActionError('Failed to copy — ' + err.message);
+            });
         }
 
         function handleRestoreDefault(id) {
@@ -781,19 +809,42 @@
         // is always allowed: snapshot-at-commit means saves keep playing
         // their committed modes regardless of library state, and removed
         // built-ins reappear in "Available defaults" for one-click restore.
+        // Per-row action toggles between Copy (default) and Remove (when
+        // the user has clicked "Remove Modes") — keeps destructive deletes
+        // behind a deliberate gesture without re-introducing a permanent
+        // confirmation prompt.
         var libraryRows = library.map(function (mode) {
             var libraryId = mode.id;
             return h('div', { key: libraryId, style: STYLES.row },
                 h('div', null,
                     h('div', { style: STYLES.modeName }, mode.name)
                 ),
-                h('button', {
-                    title: 'Remove from library',
-                    onClick: function () { handleRemoveMode(libraryId); },
-                    style: Object.assign({}, STYLES.iconBtn, { color: '#ef4444' })
-                }, icon(Trash2Icon, '🗑️'))
+                editMode
+                    ? h('button', {
+                        title: 'Remove from library',
+                        onClick: function () { handleRemoveMode(libraryId); },
+                        style: Object.assign({}, STYLES.iconBtn, { color: '#ef4444' })
+                      }, icon(Trash2Icon, '🗑️'))
+                    : h('button', {
+                        title: 'Copy mode JSON to clipboard',
+                        onClick: function () { handleCopyMode(mode); },
+                        style: Object.assign({}, STYLES.iconBtn, { color: '#9ca3af' })
+                      }, icon(ClipboardCopyIcon, '📋'))
             );
         });
+
+        var savedModesSection = library.length > 0
+            ? h('div', null,
+                h('div', { style: STYLES.sectionLabel }, 'Saved Modes'),
+                libraryRows,
+                h('div', { style: STYLES.toggleRow },
+                    h('button', {
+                        onClick: function () { setEditMode(!editMode); },
+                        style: STYLES.secondaryBtn
+                    }, editMode ? 'Done' : 'Remove Modes')
+                )
+              )
+            : null;
 
         var libraryHas = {};
         library.forEach(function (m) { libraryHas[m.id] = true; });
@@ -815,8 +866,8 @@
 
         var importCanSubmit = importText.trim().length > 0;
         var libraryTab = h('div', null,
-            h('div', null, libraryRows),
-            h('div', { style: STYLES.divider },
+            savedModesSection,
+            h('div', { style: savedModesSection ? STYLES.divider : null },
                 h('div', { style: STYLES.sectionLabel }, 'Import a Mode'),
                 h('textarea', {
                     value: importText,
