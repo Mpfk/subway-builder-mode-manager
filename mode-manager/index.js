@@ -21,7 +21,19 @@
     // change to the on-disk storage layout requires a migration. Cheap
     // dependency-free migrations run inline below; ones that need BUILTINS
     // or the registry run later via runSchemaMigrations().
-    var MOD_VERSION = '1.0.2';
+    var MOD_VERSION = '1.0.3';
+
+    function isVersionBefore(a, b) {
+        // Returns true when semver string `a` is older than `b`. Null/empty
+        // counts as "older than anything" so first-time migrations fire.
+        if (!a) return true;
+        var pa = String(a).split('.').map(Number);
+        var pb = String(b).split('.').map(Number);
+        for (var i = 0; i < 3; i++) {
+            if (pa[i] !== pb[i]) return pa[i] < pb[i];
+        }
+        return false;
+    }
     var INSTALLED_VERSION_KEY = 'mode-manager:installed-version';
     var installedVersionAtLoad = null;
     try {
@@ -238,6 +250,13 @@
     // ─── REGISTRY ────────────────────────────────────────────────────────────────
     // Storage keys (all under mode-manager: prefix in localStorage):
     //   modes-imported          → ModeDefinition[]      global user-imported library
+    //   hidden-builtins         → string[]              built-in mode ids the user has
+    //                                                   hidden from the library; visible
+    //                                                   under "Hidden defaults" with a
+    //                                                   restore button. Hide is purely a
+    //                                                   UI filter — saves that already
+    //                                                   committed the mode keep playing
+    //                                                   it via their snapshot.
     //   committed:<saveName>    → CommittedEntry[]      modes added to a specific save
     //   committed:__unsaved__   → CommittedEntry[]      modes added in a brand-new game
     //                                                   before its first save; lazily
@@ -287,6 +306,30 @@
             return storage.get('modes-imported', []).then(function (imported) {
                 var list = Array.isArray(imported) ? imported : [];
                 return storage.set('modes-imported', list.filter(function (m) { return m.id !== id; }));
+            });
+        },
+
+        getHiddenBuiltins: function () {
+            return storage.get('hidden-builtins', []).then(function (val) {
+                return Array.isArray(val) ? val.filter(function (id) { return typeof id === 'string'; }) : [];
+            });
+        },
+
+        hideBuiltin: function (id) {
+            return storage.get('hidden-builtins', []).then(function (val) {
+                var list = Array.isArray(val) ? val : [];
+                if (list.indexOf(id) !== -1) return;
+                list.push(id);
+                return storage.set('hidden-builtins', list);
+            });
+        },
+
+        restoreBuiltin: function (id) {
+            return storage.get('hidden-builtins', []).then(function (val) {
+                var list = Array.isArray(val) ? val : [];
+                var next = list.filter(function (x) { return x !== id; });
+                if (next.length === 0) return storage.delete('hidden-builtins');
+                return storage.set('hidden-builtins', next);
             });
         },
 
@@ -463,7 +506,7 @@
         // the next save load sees entries with no .definition and falls
         // back to libraryMap — which works, but defeats the snapshot
         // guarantee for pre-existing commits.
-        if (installedVersionAtLoad !== MOD_VERSION) {
+        if (isVersionBefore(installedVersionAtLoad, '1.0.2')) {
             chain = chain.then(function () {
                 return Promise.all([storage.keys(), registry.getLibrary()]).then(function (results) {
                     var allKeys = results[0];
@@ -557,6 +600,7 @@
         var tabState         = useState('save');
         var libraryState     = useState(null);
         var committedState   = useState(null);
+        var hiddenState      = useState(null);
         var loadErrorState   = useState(null);
         var importTextState  = useState('');
         var importErrorState = useState('');
@@ -565,6 +609,7 @@
         var tab         = tabState[0];         var setTab         = tabState[1];
         var library     = libraryState[0];     var setLibrary     = libraryState[1];
         var committed   = committedState[0];   var setCommitted   = committedState[1];
+        var hidden      = hiddenState[0];      var setHidden      = hiddenState[1];
         var loadError   = loadErrorState[0];   var setLoadError   = loadErrorState[1];
         var importText  = importTextState[0];  var setImportText  = importTextState[1];
         var importError = importErrorState[0]; var setImportError = importErrorState[1];
@@ -572,15 +617,17 @@
 
         function reload() {
             setLoadError(null);
-            Promise.all([registry.getLibrary(), registry.getCommitted()])
+            Promise.all([registry.getLibrary(), registry.getCommitted(), registry.getHiddenBuiltins()])
                 .then(function (results) {
                     setLibrary(results[0]);
                     setCommitted(results[1]);
+                    setHidden(results[2]);
                 })
                 .catch(function (err) {
                     console.error('[Mode Manager] Failed to load panel data:', err);
                     setLibrary(BUILTINS);
                     setCommitted([]);
+                    setHidden([]);
                     setLoadError('Storage unavailable — showing defaults. Changes will not persist.');
                 });
         }
@@ -594,12 +641,15 @@
         }, []);
 
         // Loading state
-        if (!library || !committed) {
+        if (!library || !committed || !hidden) {
             return h('div', { style: Object.assign({}, STYLES.root, { color: '#6b7280' }) }, 'Loading...');
         }
 
         var committedIds = {};
         committed.forEach(function (c) { committedIds[c.id] = true; });
+
+        var hiddenSet = {};
+        hidden.forEach(function (id) { hiddenSet[id] = true; });
 
         function reloadMod(pendingMsg, pendingType) {
             if (pendingMsg) {
@@ -639,6 +689,26 @@
                 .catch(function (err) {
                     console.error('[Mode Manager] removeImported failed:', err);
                     setActionError('Failed to remove — ' + err.message);
+                });
+        }
+
+        function handleHideBuiltin(id) {
+            setActionError(null);
+            registry.hideBuiltin(id)
+                .then(reload)
+                .catch(function (err) {
+                    console.error('[Mode Manager] hideBuiltin failed:', err);
+                    setActionError('Failed to hide — ' + err.message);
+                });
+        }
+
+        function handleRestoreBuiltin(id) {
+            setActionError(null);
+            registry.restoreBuiltin(id)
+                .then(reload)
+                .catch(function (err) {
+                    console.error('[Mode Manager] restoreBuiltin failed:', err);
+                    setActionError('Failed to restore — ' + err.message);
                 });
         }
 
@@ -684,25 +754,56 @@
         );
 
         // ── Library tab ──────────────────────────────────────────────
-        var libraryRows = library.map(function (mode) {
+        // Visible rows exclude hidden built-ins; those surface in the
+        // "Hidden defaults" section below for restore.
+        var visibleLibrary = library.filter(function (m) {
+            return !(m.source === 'builtin' && hiddenSet[m.id]);
+        });
+        var libraryRows = visibleLibrary.map(function (mode) {
+            var isImported = mode.source === 'imported';
             var isCommitted = !!committedIds[mode.id];
+            // Imports are blocked from removal while committed (no library
+            // entry left would mean future commits to other saves can't add
+            // it). Built-in hide is library-only and always safe — saves
+            // keep their snapshot regardless.
+            var disabled = isImported && isCommitted;
+            var title = isImported
+                ? (isCommitted ? 'Cannot remove — added to a game' : 'Remove from library')
+                : 'Hide from library';
             return h('div', { key: mode.id, style: STYLES.row },
                 h('div', null,
                     h('div', { style: STYLES.modeName }, mode.name)
                 ),
-                mode.source === 'imported'
-                    ? h('button', {
-                        title: isCommitted ? 'Cannot remove — added to a game' : 'Remove from library',
-                        disabled: isCommitted,
-                        onClick: function () { handleRemoveImported(mode.id); },
-                        style: Object.assign({}, STYLES.iconBtn, {
-                            color: isCommitted ? '#374151' : '#ef4444',
-                            cursor: isCommitted ? 'not-allowed' : 'pointer'
-                        })
-                      }, icon(Trash2Icon, '🗑️'))
-                    : null
+                h('button', {
+                    title: title,
+                    disabled: disabled,
+                    onClick: function () {
+                        if (isImported) handleRemoveImported(mode.id);
+                        else handleHideBuiltin(mode.id);
+                    },
+                    style: Object.assign({}, STYLES.iconBtn, {
+                        color: disabled ? '#374151' : '#ef4444',
+                        cursor: disabled ? 'not-allowed' : 'pointer'
+                    })
+                }, icon(Trash2Icon, '🗑️'))
             );
         });
+
+        var hiddenBuiltinDefs = BUILTINS.filter(function (m) { return hiddenSet[m.id]; });
+        var hiddenSection = hiddenBuiltinDefs.length > 0
+            ? h('div', { style: STYLES.divider },
+                h('div', { style: STYLES.sectionLabel }, 'Hidden defaults (' + hiddenBuiltinDefs.length + ')'),
+                hiddenBuiltinDefs.map(function (mode) {
+                    return h('div', { key: mode.id, style: STYLES.row },
+                        h('div', { style: Object.assign({}, STYLES.modeName, { color: '#9ca3af' }) }, mode.name),
+                        h('button', {
+                            onClick: function () { handleRestoreBuiltin(mode.id); },
+                            style: STYLES.addBtn
+                        }, 'Restore')
+                    );
+                })
+              )
+            : null;
 
         var importCanSubmit = importText.trim().length > 0;
         var libraryTab = h('div', null,
@@ -725,7 +826,8 @@
                         cursor: importCanSubmit ? 'pointer' : 'not-allowed'
                     })
                 }, 'Add Mode')
-            )
+            ),
+            hiddenSection
         );
 
         // ── This Save tab ────────────────────────────────────────────
@@ -734,7 +836,12 @@
             // display from it. Library lookup is just a legacy fallback.
             return { id: c.id, locked: c.locked, def: c.definition || library.find(function (m) { return m.id === c.id; }) };
         });
-        var available = library.filter(function (m) { return !committedIds[m.id]; });
+        var available = library.filter(function (m) {
+            if (committedIds[m.id]) return false;
+            // Hidden built-ins shouldn't appear as add candidates either —
+            // restore them from the Library tab first.
+            return !(m.source === 'builtin' && hiddenSet[m.id]);
+        });
 
         var committedSection = committedEntries.length === 0
             ? h('div', { style: STYLES.empty }, 'No modes added to this game yet.')
