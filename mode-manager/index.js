@@ -17,6 +17,24 @@
     }
     window.__modeManagerLoaded = true;
 
+    // Schema version. Bump this in lockstep with manifest.json whenever a
+    // change to the on-disk storage layout requires a migration. The block
+    // below runs each migration once per machine by comparing the stored
+    // installed-version against MOD_VERSION.
+    var MOD_VERSION = '1.0.1';
+    try {
+        var installedVersion = localStorage.getItem('mode-manager:installed-version');
+        if (installedVersion !== MOD_VERSION) {
+            // Pre-1.0.1 stored committed modes under a single global key,
+            // which leaked the list into every new game. 1.0.1 keys per save
+            // instead; existing saves recover via lockUsed's route-driven
+            // self-heal on next load. Safe to run on a fresh install: the
+            // legacy key simply won't exist.
+            localStorage.removeItem('mode-manager:modes-committed');
+            localStorage.setItem('mode-manager:installed-version', MOD_VERSION);
+        }
+    } catch (e) {}
+
     console.log('[Mode Manager] Loaded!');
 
     // ─── BUILTINS ────────────────────────────────────────────────────────────────
@@ -27,7 +45,7 @@
             name: 'Tram',
             description: 'Lightweight tram for short-distance urban transit',
             source: 'builtin',
-            version: '1.0.0',
+            version: '1.0.1',
             stats: {
                 maxAcceleration: 1.1,
                 maxDeceleration: 1.2,
@@ -58,7 +76,7 @@
             name: 'Bus Rapid Transit',
             description: 'High-capacity bus for dedicated rapid transit corridors',
             source: 'builtin',
-            version: '1.0.0',
+            version: '1.0.1',
             stats: {
                 maxAcceleration: 1.3,
                 maxDeceleration: 1.4,
@@ -89,7 +107,7 @@
             name: 'Monorail',
             description: 'Elevated monorail for scenic urban and resort transit',
             source: 'builtin',
-            version: '1.0.0',
+            version: '1.0.1',
             stats: {
                 maxAcceleration: 1.0,
                 maxDeceleration: 1.1,
@@ -120,7 +138,7 @@
             name: 'People Mover',
             description: 'Automated people mover for short-distance elevated transit',
             source: 'builtin',
-            version: '1.0.0',
+            version: '1.0.1',
             stats: {
                 maxAcceleration: 0.9,
                 maxDeceleration: 1.0,
@@ -208,9 +226,27 @@
     })();
 
     // ─── REGISTRY ────────────────────────────────────────────────────────────────
-    // Storage keys (auto-namespaced by mod ID via api.storage):
-    //   modes-imported   → ModeDefinition[]      global user-imported library
-    //   modes-committed  → { id, locked }[]      modes added to this game
+    // Storage keys (all under mode-manager: prefix in localStorage):
+    //   modes-imported          → ModeDefinition[]      global user-imported library
+    //   committed:<saveName>    → { id, locked }[]      modes added to a specific save
+    //   committed:__unsaved__   → { id, locked }[]      modes added in a brand-new game
+    //                                                   before its first save; lazily
+    //                                                   migrated into committed:<name>
+    //                                                   when a save name first appears
+    //   installed-version       → string                 last MOD_VERSION run on this
+    //                                                    machine; drives schema migrations
+
+    var UNSAVED_KEY = 'committed:__unsaved__';
+
+    function currentBucketKey() {
+        var name = null;
+        try {
+            if (api.gameState && typeof api.gameState.getSaveName === 'function') {
+                name = api.gameState.getSaveName();
+            }
+        } catch (e) { name = null; }
+        return name ? 'committed:' + name : UNSAVED_KEY;
+    }
 
     var registry = {
         getLibrary: function () {
@@ -235,44 +271,72 @@
         },
 
         getCommitted: function () {
-            return storage.get('modes-committed', []).then(function (val) {
-                return Array.isArray(val) ? val : [];
+            var key = currentBucketKey();
+            return storage.get(key, []).then(function (val) {
+                var list = Array.isArray(val) ? val : [];
+                // Lazy migration: when the player saves a brand-new game for the
+                // first time, the next read sees a real save name with an empty
+                // bucket — pull in anything they committed pre-save.
+                if (list.length === 0 && key !== UNSAVED_KEY) {
+                    return storage.get(UNSAVED_KEY, []).then(function (unsaved) {
+                        if (!Array.isArray(unsaved) || unsaved.length === 0) return list;
+                        return storage.set(key, unsaved)
+                            .then(function () { return storage.delete(UNSAVED_KEY); })
+                            .then(function () { return unsaved; });
+                    });
+                }
+                return list;
             });
         },
 
         commitMode: function (id) {
-            return storage.get('modes-committed', []).then(function (committed) {
+            var key = currentBucketKey();
+            return storage.get(key, []).then(function (committed) {
                 var list = Array.isArray(committed) ? committed : [];
                 if (!list.find(function (c) { return c.id === id; })) {
                     list.push({ id: id, locked: false });
-                    return storage.set('modes-committed', list);
+                    return storage.set(key, list);
                 }
             });
         },
 
         removeCommitted: function (id) {
-            return storage.get('modes-committed', []).then(function (committed) {
+            var key = currentBucketKey();
+            return storage.get(key, []).then(function (committed) {
                 var list = Array.isArray(committed) ? committed : [];
                 var entry = list.find(function (c) { return c.id === id; });
                 if (entry && !entry.locked) {
-                    return storage.set('modes-committed', list.filter(function (c) { return c.id !== id; }));
+                    var next = list.filter(function (c) { return c.id !== id; });
+                    if (next.length === 0) return storage.delete(key);
+                    return storage.set(key, next);
                 }
             });
         },
 
         lockUsed: function (usedIds) {
-            return storage.get('modes-committed', []).then(function (committed) {
+            var key = currentBucketKey();
+            return storage.get(key, []).then(function (committed) {
                 var list = Array.isArray(committed) ? committed : [];
-                return storage.set('modes-committed', list.map(function (c) {
+                var seen = {};
+                list.forEach(function (c) { seen[c.id] = true; });
+                // Self-heal: a route in the save references a mode not in our
+                // bucket → re-commit it as locked. Without this, existing saves
+                // would lose their committed list during the global→per-save
+                // key migration and routes would lose their train types.
+                Object.keys(usedIds).forEach(function (id) {
+                    if (!seen[id]) list.push({ id: id, locked: true });
+                });
+                return storage.set(key, list.map(function (c) {
                     return Object.assign({}, c, { locked: c.locked || !!usedIds[c.id] });
                 }));
             });
         },
 
         lockMode: function (id) {
-            return storage.get('modes-committed', []).then(function (committed) {
+            var key = currentBucketKey();
+            return storage.get(key, []).then(function (committed) {
                 var list = Array.isArray(committed) ? committed : [];
-                return storage.set('modes-committed', list.map(function (c) {
+                return storage.set(key, list.map(function (c) {
                     return c.id === id ? Object.assign({}, c, { locked: true }) : c;
                 }));
             });
@@ -637,8 +701,10 @@
             }
 
             // Async: register committed train types then refresh lock state.
-            // Lock state is derived from actual routes in the current save via
-            // api.gameState.getRoutes() — only modes with existing routes are locked.
+            // Route ids are read first so that any mode in use by an existing
+            // save but missing from our committed bucket (e.g. after the v2
+            // per-save key migration) gets registered before the engine tries
+            // to instantiate trains for it.
             Promise.all([registry.getLibrary(), registry.getCommitted()])
                 .then(function (results) {
                     var library   = results[0];
@@ -647,8 +713,29 @@
                     var libraryMap = {};
                     library.forEach(function (m) { libraryMap[m.id] = m; });
 
+                    var usedIds = {};
+                    try {
+                        var routes = api.gameState.getRoutes();
+                        if (Array.isArray(routes)) {
+                            routes.forEach(function (route) {
+                                var typeId = route.trackType || route.trainTypeId || route.trainType;
+                                if (typeId) usedIds[typeId] = true;
+                            });
+                        }
+                        console.log('[Mode Manager] Train types with routes:', Object.keys(usedIds));
+                    } catch (routeErr) {
+                        console.warn('[Mode Manager] Could not query routes for lock check:', routeErr);
+                    }
+
+                    var inCommitted = {};
+                    committed.forEach(function (c) { inCommitted[c.id] = true; });
+                    var toRegister = committed.slice();
+                    Object.keys(usedIds).forEach(function (id) {
+                        if (!inCommitted[id]) toRegister.push({ id: id, locked: true });
+                    });
+
                     var registered = 0;
-                    committed.forEach(function (entry) {
+                    toRegister.forEach(function (entry) {
                         var def = libraryMap[entry.id];
                         if (!def) {
                             console.warn('[Mode Manager] Committed mode "' + entry.id + '" not in library — skipping');
@@ -665,22 +752,6 @@
                             console.error('[Mode Manager] Failed to register "' + entry.id + '":', regErr);
                         }
                     });
-
-                    // Determine which committed modes are actually in use by
-                    // inspecting live routes. Only lock modes that have routes.
-                    var usedIds = {};
-                    try {
-                        var routes = api.gameState.getRoutes();
-                        if (Array.isArray(routes)) {
-                            routes.forEach(function (route) {
-                                var typeId = route.trackType || route.trainTypeId || route.trainType;
-                                if (typeId) usedIds[typeId] = true;
-                            });
-                        }
-                        console.log('[Mode Manager] Train types with routes:', Object.keys(usedIds));
-                    } catch (routeErr) {
-                        console.warn('[Mode Manager] Could not query routes for lock check:', routeErr);
-                    }
 
                     return registry.lockUsed(usedIds).then(function () { return registered; });
                 })
@@ -705,6 +776,14 @@
             api.ui.showNotification('Mode Manager failed to initialize — check console', 'error');
         }
     });
+
+    // Switching saves changes the storage bucket key. Tell any open panel to
+    // refetch so it doesn't keep showing the previous save's committed list.
+    if (typeof api.hooks.onGameLoaded === 'function') {
+        api.hooks.onGameLoaded(function () {
+            window.dispatchEvent(new CustomEvent('mode-manager:lock-changed'));
+        });
+    }
 
     // ─── REAL-TIME LOCK HOOKS ────────────────────────────────────────────────────
     // Lock a mode the moment tracks are built or a route is created, rather than
