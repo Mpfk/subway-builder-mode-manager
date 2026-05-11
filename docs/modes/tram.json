@@ -1,4 +1,6 @@
 {
+  "schemaVersion": "1.0.0",
+  "revision": 1,
   "id": "tram",
   "name": "Tram",
   "description": "Lightweight tram for short-distance urban transit",
