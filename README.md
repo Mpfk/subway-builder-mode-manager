@@ -1,5 +1,7 @@
 # Mode Manager (Subway Builder Mod)
 
+[![Latest Release](https://img.shields.io/github/v/release/Mpfk/subway-builder-mode-manager)](https://github.com/Mpfk/subway-builder-mode-manager/releases/latest)
+
 An all-in-one Subway Builder mod for creating, managing, and editing transit modes without juggling separate mod folders or config files! Easily add busses, trams, monorails, and more! Create your own custom transit modes with an easy UI.
 
 <p align="center">
@@ -174,11 +176,7 @@ Don't see what you need? Import any JSON mode definition from the Library tab, o
 
 ### 1. Get the mod
 
-Clone or download this repo — only the `mode-manager/` folder is required.
-
-```sh
-git clone https://github.com/Mpfk/subway-builder-mode-manager.git
-```
+Download **mode-manager.zip** from the [latest release](https://github.com/Mpfk/subway-builder-mode-manager/releases/latest) and unzip it. The zip contains only the `mode-manager/` folder — nothing else to strip out.
 
 ### 2. Copy it into your mods folder
 
