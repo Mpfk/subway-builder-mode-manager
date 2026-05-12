@@ -23,7 +23,7 @@
     // change to the on-disk storage layout requires a migration. Cheap
     // dependency-free migrations run inline below; ones that need BUILTINS
     // or the registry run later via runSchemaMigrations().
-    var MOD_VERSION = '1.1.0';
+    var MOD_VERSION = '1.1.1';
 
     function isVersionBefore(a, b) {
         // Returns true when semver string `a` is older than `b`. Null/empty

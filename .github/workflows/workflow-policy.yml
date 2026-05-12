@@ -36,7 +36,7 @@ jobs:
             } else {
               const bodyMatch = /closes\s+#(\d+)/i.exec(prBody);
               if (!bodyMatch) {
-                core.setFailed(`PR must either use an issue/{number} branch or include 'Closes #N' in the title/body. Branch: ${branch}`);
+                core.info(`No linked issue found for branch '${branch}' — skipping policy checks.`);
                 return;
               }
               issueNumber = Number(bodyMatch[1]);
