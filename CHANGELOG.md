@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.1.0] — 2026-05-11
+## [1.1.1] — 2026-05-11
 
 First public release.
 
@@ -53,6 +53,6 @@ Initial internal release.
 - Auto-reload of the mod after add/remove via `api.reloadMods()`.
 - Snapshot-at-commit: each save pins its own copy of every mode definition, isolating saves from library changes.
 
-[Unreleased]: https://github.com/Mpfk/subway-builder-mode-manager/compare/v1.1.0...HEAD
-[1.1.0]: https://github.com/Mpfk/subway-builder-mode-manager/releases/tag/v1.1.0
+[Unreleased]: https://github.com/Mpfk/subway-builder-mode-manager/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/Mpfk/subway-builder-mode-manager/releases/tag/v1.1.1
 [1.0.0]: https://github.com/Mpfk/subway-builder-mode-manager/releases/tag/v1.0.0
