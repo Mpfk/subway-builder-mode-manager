@@ -11,6 +11,7 @@ on:
     branches: [main]
 
 permissions:
+  contents: read   # required for actions/checkout on private repos
   issues: write
 
 env:
