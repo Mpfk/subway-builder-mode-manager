@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Matt Lydon
 // Mode Manager - All-in-one transit mode selector for Subway Builder
 (function () {
     'use strict';
@@ -21,7 +23,7 @@
     // change to the on-disk storage layout requires a migration. Cheap
     // dependency-free migrations run inline below; ones that need BUILTINS
     // or the registry run later via runSchemaMigrations().
-    var MOD_VERSION = '1.0.10';
+    var MOD_VERSION = '1.1.0';
 
     function isVersionBefore(a, b) {
         // Returns true when semver string `a` is older than `b`. Null/empty
@@ -87,11 +89,13 @@
                 trackMaintenanceCostPerMeter: 200,
                 stationMaintenanceCostPerYear: 10000
             },
-            compatibleTrackTypes: ['tram'],
+            // Trams share rails with light rail; can also draft off
+            // trolleybus overhead-wire infrastructure.
+            compatibleTrackTypes: ['tram', 'light-rail', 'trolleybus'],
             appearance: { color: '#f59e0b' },
             allowAtGradeRoadCrossing: true,
             elevationMultipliers: { AT_GRADE: 1, ELEVATED: 4, CUT_AND_COVER: 6 },
-            tags: []
+            tags: ['rail']
         },
         {
             id: 'brt',
@@ -128,7 +132,8 @@
                 trackMaintenanceCostPerMeter: 100,
                 stationMaintenanceCostPerYear: 5000
             },
-            compatibleTrackTypes: ['brt'],
+            // All rubber-tire bus modes share roads with each other.
+            compatibleTrackTypes: ['brt', 'local-bus', 'trolleybus'],
             appearance: { color: '#ef4444' },
             allowAtGradeRoadCrossing: true,
             elevationMultipliers: { AT_GRADE: 1, ELEVATED: 8, CUT_AND_COVER: 12 },
@@ -173,7 +178,7 @@
             appearance: { color: '#8b5cf6' },
             allowAtGradeRoadCrossing: false,
             elevationMultipliers: { AT_GRADE: 1, ELEVATED: 4, CUT_AND_COVER: 8 },
-            tags: []
+            tags: ['rail', 'elevated']
         },
         {
             id: 'people-mover',
@@ -214,7 +219,299 @@
             appearance: { color: '#3b82f6' },
             allowAtGradeRoadCrossing: false,
             elevationMultipliers: { AT_GRADE: 1, ELEVATED: 3, CUT_AND_COVER: 5 },
-            tags: []
+            tags: ['rail', 'elevated', 'automated']
+        },
+        {
+            id: 'local-bus',
+            name: 'Local Bus',
+            description: 'Standard city bus for frequent neighborhood service',
+            schemaVersion: '1.0.0',
+            revision: 1,
+            stats: {
+                maxAcceleration: 1.0,
+                maxDeceleration: 1.1,
+                maxSpeed: 18,
+                maxSpeedLocalStation: 8,
+                capacityPerCar: 50,
+                carLength: 12,
+                minCars: 1,
+                maxCars: 1,
+                carsPerCarSet: 1,
+                carCost: 300000,
+                trainWidth: 2.5,
+                minStationLength: 12,
+                maxStationLength: 12,
+                baseTrackCost: 1000,
+                baseStationCost: 500000,
+                trainOperationalCostPerHour: 40,
+                carOperationalCostPerHour: 40,
+                scissorsCrossoverCost: 100000,
+                stopTimeSeconds: 25,
+                maxLateralAcceleration: 1.5,
+                parallelTrackSpacing: 3,
+                trackClearance: 2,
+                minTurnRadius: 6,
+                minStationTurnRadius: 15,
+                maxSlopePercentage: 10,
+                trackMaintenanceCostPerMeter: 50,
+                stationMaintenanceCostPerYear: 2000
+            },
+            compatibleTrackTypes: ['local-bus', 'trolleybus', 'brt'],
+            appearance: { color: '#6b7280' },
+            allowAtGradeRoadCrossing: true,
+            elevationMultipliers: { AT_GRADE: 1, ELEVATED: 10, CUT_AND_COVER: 15 },
+            tags: ['bus']
+        },
+        {
+            id: 'trolleybus',
+            name: 'Trolleybus',
+            description: 'Electric bus drawing power from overhead catenary wires',
+            schemaVersion: '1.0.0',
+            revision: 1,
+            stats: {
+                maxAcceleration: 1.2,
+                maxDeceleration: 1.3,
+                maxSpeed: 20,
+                maxSpeedLocalStation: 9,
+                capacityPerCar: 70,
+                carLength: 18,
+                minCars: 1,
+                maxCars: 1,
+                carsPerCarSet: 1,
+                carCost: 400000,
+                trainWidth: 2.5,
+                minStationLength: 18,
+                maxStationLength: 18,
+                baseTrackCost: 3000,
+                baseStationCost: 1000000,
+                trainOperationalCostPerHour: 50,
+                carOperationalCostPerHour: 50,
+                scissorsCrossoverCost: 300000,
+                stopTimeSeconds: 22,
+                maxLateralAcceleration: 1.4,
+                parallelTrackSpacing: 3,
+                trackClearance: 2,
+                minTurnRadius: 7,
+                minStationTurnRadius: 18,
+                maxSlopePercentage: 12,
+                trackMaintenanceCostPerMeter: 150,
+                stationMaintenanceCostPerYear: 4000
+            },
+            compatibleTrackTypes: ['trolleybus', 'local-bus', 'brt'],
+            appearance: { color: '#0d9488' },
+            allowAtGradeRoadCrossing: true,
+            elevationMultipliers: { AT_GRADE: 1, ELEVATED: 9, CUT_AND_COVER: 14 },
+            tags: ['bus', 'electric']
+        },
+        {
+            id: 'light-rail',
+            name: 'Light Rail',
+            description: 'Multi-car light rail for medium-capacity dedicated transit corridors',
+            schemaVersion: '1.0.0',
+            revision: 1,
+            stats: {
+                maxAcceleration: 1.2,
+                maxDeceleration: 1.3,
+                maxSpeed: 22,
+                maxSpeedLocalStation: 10,
+                capacityPerCar: 90,
+                carLength: 28,
+                minCars: 2,
+                maxCars: 4,
+                carsPerCarSet: 2,
+                carCost: 1200000,
+                trainWidth: 2.5,
+                minStationLength: 56,
+                maxStationLength: 112,
+                baseTrackCost: 8000,
+                baseStationCost: 6000000,
+                trainOperationalCostPerHour: 120,
+                carOperationalCostPerHour: 30,
+                scissorsCrossoverCost: 2500000,
+                stopTimeSeconds: 18,
+                maxLateralAcceleration: 1.8,
+                parallelTrackSpacing: 4,
+                trackClearance: 2,
+                minTurnRadius: 10,
+                minStationTurnRadius: 20,
+                maxSlopePercentage: 7,
+                trackMaintenanceCostPerMeter: 400,
+                stationMaintenanceCostPerYear: 20000
+            },
+            // Light rail shares steel rails with trams.
+            compatibleTrackTypes: ['light-rail', 'tram'],
+            appearance: { color: '#10b981' },
+            allowAtGradeRoadCrossing: true,
+            elevationMultipliers: { AT_GRADE: 1, ELEVATED: 5, CUT_AND_COVER: 8 },
+            tags: ['rail']
+        },
+        {
+            id: 'aerial-gondola',
+            name: 'Aerial Gondola',
+            description: 'Cable-suspended cabins for steep terrain and scenic routes',
+            schemaVersion: '1.0.0',
+            revision: 1,
+            stats: {
+                maxAcceleration: 0.5,
+                maxDeceleration: 0.6,
+                maxSpeed: 7,
+                maxSpeedLocalStation: 5,
+                capacityPerCar: 8,
+                carLength: 3,
+                minCars: 1,
+                maxCars: 1,
+                carsPerCarSet: 1,
+                carCost: 200000,
+                trainWidth: 2.0,
+                minStationLength: 3,
+                maxStationLength: 3,
+                baseTrackCost: 25000,
+                baseStationCost: 3000000,
+                trainOperationalCostPerHour: 15,
+                carOperationalCostPerHour: 15,
+                scissorsCrossoverCost: 500000,
+                stopTimeSeconds: 5,
+                maxLateralAcceleration: 0.8,
+                parallelTrackSpacing: 5,
+                trackClearance: 3,
+                minTurnRadius: 3,
+                minStationTurnRadius: 8,
+                maxSlopePercentage: 100,
+                trackMaintenanceCostPerMeter: 100,
+                stationMaintenanceCostPerYear: 20000
+            },
+            compatibleTrackTypes: ['aerial-gondola'],
+            appearance: { color: '#84cc16' },
+            allowAtGradeRoadCrossing: false,
+            // Aerial guideways are elevated by definition; AT_GRADE and
+            // CUT_AND_COVER multipliers are sky-high to discourage them.
+            elevationMultipliers: { AT_GRADE: 50, ELEVATED: 1, CUT_AND_COVER: 100 },
+            tags: ['aerial']
+        },
+        {
+            id: 'funicular',
+            name: 'Funicular',
+            description: 'Inclined railway with counterbalanced cars for steep grades',
+            schemaVersion: '1.0.0',
+            revision: 1,
+            stats: {
+                maxAcceleration: 0.5,
+                maxDeceleration: 0.6,
+                maxSpeed: 5,
+                maxSpeedLocalStation: 3,
+                capacityPerCar: 40,
+                carLength: 10,
+                minCars: 1,
+                maxCars: 2,
+                carsPerCarSet: 1,
+                carCost: 400000,
+                trainWidth: 2.4,
+                minStationLength: 10,
+                maxStationLength: 20,
+                baseTrackCost: 30000,
+                baseStationCost: 4000000,
+                trainOperationalCostPerHour: 20,
+                carOperationalCostPerHour: 20,
+                scissorsCrossoverCost: 1000000,
+                stopTimeSeconds: 15,
+                maxLateralAcceleration: 0.8,
+                parallelTrackSpacing: 3,
+                trackClearance: 2,
+                minTurnRadius: 5,
+                minStationTurnRadius: 10,
+                maxSlopePercentage: 30,
+                trackMaintenanceCostPerMeter: 200,
+                stationMaintenanceCostPerYear: 8000
+            },
+            compatibleTrackTypes: ['funicular'],
+            appearance: { color: '#a16207' },
+            allowAtGradeRoadCrossing: false,
+            elevationMultipliers: { AT_GRADE: 1, ELEVATED: 4, CUT_AND_COVER: 6 },
+            tags: ['rail', 'incline']
+        },
+        {
+            id: 'high-speed-rail',
+            name: 'High-Speed Rail',
+            description: 'Long-distance fast rail for intercity and regional express service',
+            schemaVersion: '1.0.0',
+            revision: 1,
+            stats: {
+                maxAcceleration: 2.5,
+                maxDeceleration: 2.6,
+                maxSpeed: 60,
+                maxSpeedLocalStation: 30,
+                capacityPerCar: 80,
+                carLength: 26,
+                minCars: 4,
+                maxCars: 10,
+                carsPerCarSet: 2,
+                carCost: 5000000,
+                trainWidth: 3.4,
+                minStationLength: 104,
+                maxStationLength: 260,
+                baseTrackCost: 50000,
+                baseStationCost: 20000000,
+                trainOperationalCostPerHour: 800,
+                carOperationalCostPerHour: 200,
+                scissorsCrossoverCost: 8000000,
+                stopTimeSeconds: 8,
+                maxLateralAcceleration: 2.5,
+                parallelTrackSpacing: 5,
+                trackClearance: 3,
+                minTurnRadius: 50,
+                minStationTurnRadius: 60,
+                maxSlopePercentage: 4,
+                trackMaintenanceCostPerMeter: 2000,
+                stationMaintenanceCostPerYear: 100000
+            },
+            compatibleTrackTypes: ['high-speed-rail'],
+            appearance: { color: '#1e40af' },
+            allowAtGradeRoadCrossing: false,
+            elevationMultipliers: { AT_GRADE: 1, ELEVATED: 3, CUT_AND_COVER: 5 },
+            tags: ['rail', 'high-speed']
+        },
+        {
+            id: 'maglev',
+            name: 'Maglev',
+            description: 'Magnetic levitation premium intercity transit',
+            schemaVersion: '1.0.0',
+            revision: 1,
+            stats: {
+                maxAcceleration: 3.0,
+                maxDeceleration: 3.1,
+                maxSpeed: 80,
+                maxSpeedLocalStation: 40,
+                capacityPerCar: 60,
+                carLength: 30,
+                minCars: 2,
+                maxCars: 6,
+                carsPerCarSet: 2,
+                carCost: 30000000,
+                trainWidth: 3.0,
+                minStationLength: 60,
+                maxStationLength: 180,
+                baseTrackCost: 80000,
+                baseStationCost: 25000000,
+                trainOperationalCostPerHour: 1500,
+                carOperationalCostPerHour: 300,
+                scissorsCrossoverCost: 12000000,
+                stopTimeSeconds: 5,
+                maxLateralAcceleration: 3.0,
+                parallelTrackSpacing: 5,
+                trackClearance: 3,
+                minTurnRadius: 30,
+                minStationTurnRadius: 40,
+                maxSlopePercentage: 8,
+                trackMaintenanceCostPerMeter: 5000,
+                stationMaintenanceCostPerYear: 200000
+            },
+            compatibleTrackTypes: ['maglev'],
+            appearance: { color: '#06b6d4' },
+            allowAtGradeRoadCrossing: false,
+            // Maglev's natural form is an elevated guideway; AT_GRADE works
+            // but is more expensive than going elevated.
+            elevationMultipliers: { AT_GRADE: 2, ELEVATED: 1, CUT_AND_COVER: 8 },
+            tags: ['rail', 'high-speed', 'maglev']
         }
     ];
 
@@ -235,6 +532,16 @@
         trackMaintenanceCostPerMeter: 200,
         stationMaintenanceCostPerYear: 10000
     };
+
+    // Train-type ids that the host game ships with. We exclude these when
+    // detecting "managed by another mod" rows in the Active in this game
+    // list — anything other than our committed modes AND these built-ins
+    // is presumed to come from a different mod.
+    //
+    // The published docs only confirm 'heavy-metro' and 'light-metro' as
+    // examples; this list may need extending if the game has additional
+    // built-ins we haven't seen.
+    var GAME_BUILTIN_TRAIN_TYPES = { 'heavy-metro': 1, 'light-metro': 1, 'commuter-rail': 1 };
 
     function withStatDefaults(def) {
         // Merges STAT_DEFAULTS under def.stats so the engine always receives
@@ -261,6 +568,69 @@
         'trainOperationalCostPerHour', 'carOperationalCostPerHour',
         'scissorsCrossoverCost'
     ];
+
+    // Hand-tuned user-facing labels for the editor form. Anything not listed
+    // here falls back to autoFormatLabel below (camelCase / SNAKE_CASE →
+    // Title Case), so the map only needs entries where auto-format is ugly
+    // or where helper text inline with the label adds value.
+    var FIELD_LABELS = {
+        id: 'ID (lowercase, hyphens only)',
+        name: 'Name',
+        description: 'Description',
+        compatibleTrackTypes: 'Compatible Track Types (comma-separated)',
+        tags: 'Tags (comma-separated, optional)',
+        allowAtGradeRoadCrossing: 'Allow At-Grade Road Crossings',
+        // Performance
+        maxAcceleration: 'Max Acceleration',
+        maxDeceleration: 'Max Deceleration',
+        maxSpeed: 'Max Speed',
+        maxSpeedLocalStation: 'Max Speed at Local Stations',
+        maxLateralAcceleration: 'Max Lateral Acceleration',
+        maxSlopePercentage: 'Max Slope (%)',
+        stopTimeSeconds: 'Stop Time (seconds)',
+        // Capacity
+        capacityPerCar: 'Capacity per Car',
+        carLength: 'Car Length',
+        minCars: 'Min Cars',
+        maxCars: 'Max Cars',
+        carsPerCarSet: 'Cars per Car Set',
+        trainWidth: 'Train Width',
+        // Stations
+        minStationLength: 'Min Station Length',
+        maxStationLength: 'Max Station Length',
+        minStationTurnRadius: 'Min Station Turn Radius',
+        // Track Geometry
+        parallelTrackSpacing: 'Parallel Track Spacing',
+        trackClearance: 'Track Clearance',
+        minTurnRadius: 'Min Turn Radius',
+        // Costs
+        carCost: 'Car Cost',
+        baseTrackCost: 'Base Track Cost',
+        baseStationCost: 'Base Station Cost',
+        scissorsCrossoverCost: 'Scissors Crossover Cost',
+        trainOperationalCostPerHour: 'Train Operational Cost / Hour',
+        carOperationalCostPerHour: 'Car Operational Cost / Hour',
+        trackMaintenanceCostPerMeter: 'Track Maintenance Cost / Meter',
+        stationMaintenanceCostPerYear: 'Station Maintenance Cost / Year',
+        // Elevation keys
+        AT_GRADE: 'At Grade',
+        ELEVATED: 'Elevated',
+        CUT_AND_COVER: 'Cut and Cover',
+        STANDARD_TUNNEL: 'Standard Tunnel',
+        DEEP_BORE: 'Deep Bore'
+    };
+
+    function autoFormatLabel(key) {
+        return String(key)
+            .replace(/_/g, ' ')
+            .replace(/([a-z])([A-Z])/g, '$1 $2')
+            .toLowerCase()
+            .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+    }
+
+    function labelFor(key) {
+        return FIELD_LABELS[key] || autoFormatLabel(key);
+    }
 
     // ─── STORAGE ─────────────────────────────────────────────────────────────────
     // api.storage is context-bound and only works during onGameInit callbacks.
@@ -713,7 +1083,7 @@
     // module-level code never touches the React object before onGameInit fires.
 
     var STYLES = {
-        root:         { padding: '12px 16px', color: '#f9fafb', fontFamily: 'inherit' },
+        root:         { padding: '12px 16px', color: '#f9fafb', fontFamily: 'inherit', maxHeight: 'calc(100vh - 100px)', overflowY: 'auto' },
         tabBar:       { display: 'flex', borderBottom: '1px solid #374151', marginBottom: '12px' },
         tab:          { flex: 1, padding: '8px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px' },
         tabActive:    { borderBottom: '2px solid #60a5fa', color: '#60a5fa' },
@@ -730,9 +1100,12 @@
         editorTitle:  { color: '#f9fafb', fontSize: '13px', fontWeight: '600', marginBottom: '8px' },
         editorBack:   { background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '11px', padding: '0 4px 6px 0' },
         formSection:  { marginTop: '10px', paddingTop: '8px', borderTop: '1px solid #1f2937' },
+        collapsibleHeader: { color: '#6b7280', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left', display: 'block', width: '100%', fontFamily: 'inherit' },
         formLabel:    { display: 'block', color: '#9ca3af', fontSize: '11px', marginBottom: '2px' },
         formInput:    { width: '100%', background: '#111827', border: '1px solid #374151', borderRadius: '4px', color: '#f9fafb', padding: '4px 6px', fontSize: '11px', boxSizing: 'border-box', fontFamily: 'inherit' },
         formInputRO:  { width: '100%', background: '#0b1220', border: '1px solid #374151', borderRadius: '4px', color: '#6b7280', padding: '4px 6px', fontSize: '11px', boxSizing: 'border-box', fontFamily: 'inherit' },
+        formInputErr: { borderColor: '#ef4444' },
+        fieldError:   { color: '#ef4444', fontSize: '10px', marginTop: '2px' },
         formGrid:     { display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: '8px', rowGap: '6px' },
         formField:    { display: 'flex', flexDirection: 'column' },
         formCheckRow: { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' },
@@ -760,6 +1133,8 @@
         var AlertCircleIcon    = icons.AlertCircle;
         var ClipboardCopyIcon  = icons.ClipboardCopy;
         var PencilRulerIcon    = icons.PencilRuler;
+        var CopyPlusIcon       = icons.CopyPlus;
+        var PackageIcon        = icons.Package;
         function icon(Comp, fallback, props) {
             return Comp ? h(Comp, props || { size: 16 }) : fallback;
         }
@@ -783,6 +1158,19 @@
         var actionErrorState = useState(null);
         var editModeState    = useState(false);
         var editorTargetState = useState(null);
+        // Tracks which collapsible editor sections are folded. All start
+        // collapsed: their fields are either optional or auto-computed, so
+        // the user can leave them alone for sensible default behavior.
+        var collapsedSectionsState = useState({ stations: true, maintenanceCosts: true, trackGeometry: true, elevationMultipliers: true });
+        // Bumped when fields that auto-computed values depend on change
+        // (currently minCars / maxCars / carLength / maxAcceleration), so
+        // dependent inputs re-render and their "auto: N" placeholders
+        // refresh.
+        var autoTickState = useState(0);
+        // Per-field validation feedback: { field: 'stats.minCars', message }
+        // or null. Set on Save when validateImport rejects; cleared on
+        // any subsequent edit so corrected fields stop looking broken.
+        var fieldErrorState = useState(null);
 
         var tab         = tabState[0];         var setTab         = tabState[1];
         var library     = libraryState[0];     var setLibrary     = libraryState[1];
@@ -796,6 +1184,9 @@
         // view is active, otherwise null. The panel renders the editor in
         // place of the tab content while it's set.
         var editorTarget = editorTargetState[0]; var setEditorTarget = editorTargetState[1];
+        var collapsedSections = collapsedSectionsState[0]; var setCollapsedSections = collapsedSectionsState[1];
+        var autoTick = autoTickState[0]; var setAutoTick = autoTickState[1];
+        var fieldError = fieldErrorState[0]; var setFieldError = fieldErrorState[1];
 
         function reload() {
             setLoadError(null);
@@ -916,6 +1307,66 @@
             setEditorTarget({ mode: 'edit', def: cloneDefinition(mode) });
         }
 
+        function handleExplore() {
+            var url = 'https://github.com/Mpfk/subway-builder-mode-manager/tree/main/docs/modes';
+            // The host's Electron renderer blocks window.open and there's
+            // no api.utils.openExternal exposed. Reliable path: copy the URL
+            // to clipboard so the user always has it. Also attempt browser
+            // launches in case one works in their environment — they're
+            // bonus, not the contract.
+            try { window.open(url, '_blank'); } catch (e) {}
+            try {
+                var a = document.createElement('a');
+                a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            } catch (e) {}
+            var nav = (typeof navigator !== 'undefined') ? navigator : null;
+            if (!nav || !nav.clipboard || typeof nav.clipboard.writeText !== 'function') {
+                setActionError('Clipboard unavailable. Visit: ' + url);
+                return;
+            }
+            nav.clipboard.writeText(url).then(function () {
+                try { api.ui.showNotification('Mode library URL copied to clipboard — paste it in your browser to explore', 'info'); } catch (e) {}
+            }).catch(function (err) {
+                console.error('[Mode Manager] clipboard write failed:', err);
+                setActionError('Couldn\'t open browser or copy URL. Visit: ' + url);
+            });
+        }
+
+        function handleCopyAll() {
+            setActionError(null);
+            var nav = (typeof navigator !== 'undefined') ? navigator : null;
+            if (!nav || !nav.clipboard || typeof nav.clipboard.writeText !== 'function') {
+                setActionError('Clipboard unavailable in this context.');
+                return;
+            }
+            // Pretty-print as a JSON array so the user can paste it back as
+            // a backup or share it. Each entry is a full mode definition.
+            var json = JSON.stringify(library, null, 2);
+            nav.clipboard.writeText(json).then(function () {
+                try { api.ui.showNotification('Copied ' + library.length + ' mode' + (library.length === 1 ? '' : 's') + ' to clipboard', 'success'); } catch (e) {}
+            }).catch(function (err) {
+                console.error('[Mode Manager] clipboard write failed:', err);
+                setActionError('Failed to copy — ' + err.message);
+            });
+        }
+
+        function handleDuplicateMode(mode) {
+            setActionError(null);
+            // Seed the create form with a clone of the mode but blank id
+            // (user must pick a unique one) and " (copy)" suffix on name
+            // for clarity. Revision resets to 1 — this is a new entry, not
+            // a continuation of the source's revision history.
+            var seed = cloneDefinition(mode);
+            seed.id = '';
+            seed.name = (mode.name || '') + ' (copy)';
+            seed.revision = 1;
+            setEditorTarget({ mode: 'create', def: seed });
+        }
+
         function handleOpenCreate() {
             setActionError(null);
             // Empty seed for a new mode. Stats start undefined (validateImport
@@ -968,19 +1419,65 @@
         }
 
         function handleImport() {
-            var result = registry.validateImport(importText);
-            if (result.error) { setImportError(result.error); return; }
-            if (library.find(function (m) { return m.id === result.def.id; })) {
-                setImportError('A mode with id "' + result.def.id + '" already exists.');
+            // Try parsing to JSON first — that's the one error we can't
+            // recover from to open the editor (no parsed object to seed it).
+            var parsed;
+            try { parsed = JSON.parse(importText); }
+            catch (e) { setImportError('Invalid JSON: ' + e.message); return; }
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                setImportError('Definition must be a JSON object.');
                 return;
             }
+
+            // Run the full validation against the original text to extract
+            // a precise error message (which field failed, which stat is
+            // missing, etc.) before deciding the next step.
+            var result = registry.validateImport(importText);
+            var dup = library.find(function (m) { return parsed && parsed.id === m.id; });
+
+            // Happy path: clean import + unique id → save directly without
+            // routing through the editor. Preserves the one-click flow.
+            if (!result.error && !dup) {
+                setImportError('');
+                registry.addMode(result.def)
+                    .then(function () { reload(); setImportText(''); })
+                    .catch(function (err) {
+                        console.error('[Mode Manager] addMode failed:', err);
+                        setImportError('Failed to save import — ' + err.message);
+                    });
+                return;
+            }
+
+            // Error path: open the editor pre-filled with whatever parsed,
+            // and surface the specific problem on the right input via the
+            // editor's existing per-field error display. Missing or
+            // wrong-type top-level fields get safe defaults so the form
+            // doesn't crash on undefined.
+            var seed = {
+                schemaVersion: typeof parsed.schemaVersion === 'string' ? parsed.schemaVersion : SCHEMA_VERSION,
+                revision: typeof parsed.revision === 'number' ? parsed.revision : 1,
+                id: typeof parsed.id === 'string' ? parsed.id : '',
+                name: typeof parsed.name === 'string' ? parsed.name : '',
+                description: typeof parsed.description === 'string' ? parsed.description : '',
+                stats: (parsed.stats && typeof parsed.stats === 'object' && !Array.isArray(parsed.stats)) ? parsed.stats : {},
+                compatibleTrackTypes: Array.isArray(parsed.compatibleTrackTypes) ? parsed.compatibleTrackTypes : [],
+                appearance: (parsed.appearance && typeof parsed.appearance === 'object' && !Array.isArray(parsed.appearance)) ? parsed.appearance : { color: '#60a5fa' },
+                allowAtGradeRoadCrossing: !!parsed.allowAtGradeRoadCrossing,
+                elevationMultipliers: (parsed.elevationMultipliers && typeof parsed.elevationMultipliers === 'object' && !Array.isArray(parsed.elevationMultipliers)) ? parsed.elevationMultipliers : {},
+                tags: Array.isArray(parsed.tags) ? parsed.tags : []
+            };
+            setEditorTarget({ mode: 'create', def: seed });
+            setImportText('');
             setImportError('');
-            registry.addMode(result.def)
-                .then(function () { reload(); setImportText(''); })
-                .catch(function (err) {
-                    console.error('[Mode Manager] addMode failed:', err);
-                    setImportError('Failed to save import — ' + err.message);
-                });
+            // Validation errors take priority over the duplicate-id error
+            // (a duplicate id with broken stats is still broken stats first).
+            if (result.error) {
+                setFieldError(parseFieldError(result.error));
+                setActionError(result.error);
+            } else if (dup) {
+                setFieldError({ field: 'id', message: 'Must have unique ID — "' + seed.id + '" already exists.' });
+                setActionError('Must have unique ID — "' + seed.id + '" already exists.');
+            }
         }
 
         // ── Mode editor view ─────────────────────────────────────────
@@ -997,116 +1494,264 @@
             // their values only on save.
             var working = editorTarget.def;
 
-            function setTopField(field, value) { working[field] = value; }
+            // Fields whose changes trigger an autoTick bump so dependent
+            // placeholder text (auto-computed values) re-renders live.
+            // - minCars / maxCars / carLength → station length placeholders
+            // - maxAcceleration → maxDeceleration placeholder
+            var AUTO_TRIGGER_FIELDS = { minCars: 1, maxCars: 1, carLength: 1, maxAcceleration: 1 };
+
+            function setTopField(field, value) {
+                working[field] = value;
+                if (fieldError) setFieldError(null);
+            }
             function setStatField(field, value) {
                 working.stats = working.stats || {};
                 if (value === '' || value === null || isNaN(value)) delete working.stats[field];
                 else working.stats[field] = value;
+                if (AUTO_TRIGGER_FIELDS[field]) setAutoTick(autoTick + 1);
+                if (fieldError) setFieldError(null);
             }
             function setElevField(key, value) {
                 working.elevationMultipliers = working.elevationMultipliers || {};
                 if (value === '' || value === null || isNaN(value)) delete working.elevationMultipliers[key];
                 else working.elevationMultipliers[key] = value;
+                if (fieldError) setFieldError(null);
             }
 
-            function makeStatGrid(fields) {
+            // Returns placeholder text for fields that have either a
+            // derived value (computed from other user input) or a static
+            // default. The placeholder previews exactly what the user
+            // would get by leaving the field blank.
+            //
+            // Derived ("auto: N") — take priority over static defaults:
+            //   - minStationLength  ← minCars × carLength
+            //   - maxStationLength  ← ⌈maxCars × carLength × 1.10⌉
+            //                         (10% tolerance buffer rounded up so
+            //                          placed stations comfortably fit the
+            //                          longest train without rounding errors
+            //                          tripping placement validation)
+            //   - maxDeceleration   ← maxAcceleration + 0.1
+            //
+            // Static ("default: N") — any field listed in STAT_DEFAULTS
+            // without a derived placeholder.
+            function autoStatPlaceholders() {
+                var s = working.stats || {};
+                var out = {};
+                if (typeof s.minCars === 'number' && typeof s.carLength === 'number' && !isNaN(s.minCars) && !isNaN(s.carLength)) {
+                    out.minStationLength = 'auto: ' + (s.minCars * s.carLength);
+                }
+                if (typeof s.maxCars === 'number' && typeof s.carLength === 'number' && !isNaN(s.maxCars) && !isNaN(s.carLength)) {
+                    out.maxStationLength = 'auto: ' + Math.ceil(s.maxCars * s.carLength * 1.1);
+                }
+                if (typeof s.maxAcceleration === 'number' && !isNaN(s.maxAcceleration)) {
+                    out.maxDeceleration = 'auto: ' + (Math.round((s.maxAcceleration + 0.1) * 10) / 10);
+                }
+                Object.keys(STAT_DEFAULTS).forEach(function (key) {
+                    if (out[key]) return;
+                    out[key] = 'default: ' + STAT_DEFAULTS[key];
+                });
+                return out;
+            }
+
+            function makeStatGrid(fields, placeholders) {
+                placeholders = placeholders || {};
                 return h('div', { style: STYLES.formGrid }, fields.map(function (key) {
                     var initial = working.stats && working.stats[key];
+                    // Any stat with a STAT_DEFAULTS entry is optional in the
+                    // schema and gets the "(optional)" marker. Lets the user
+                    // tell at a glance what's safe to leave blank — even in
+                    // sections that aren't fully optional (e.g. Performance).
+                    var label = labelFor(key) + (STAT_DEFAULTS[key] != null ? ' (optional)' : '');
+                    var errKey = 'stats.' + key;
+                    var hasErr = fieldError && fieldError.field === errKey;
                     return h('div', { key: key, style: STYLES.formField },
-                        h('label', { style: STYLES.formLabel }, key),
+                        h('label', { style: STYLES.formLabel }, label),
                         h('input', {
                             type: 'number',
                             step: 'any',
                             defaultValue: initial == null ? '' : initial,
+                            placeholder: placeholders[key] || '',
                             onChange: function (e) { setStatField(key, parseFloat(e.target.value)); },
-                            style: STYLES.formInput
-                        })
+                            style: hasErr ? Object.assign({}, STYLES.formInput, STYLES.formInputErr) : STYLES.formInput
+                        }),
+                        hasErr ? h('div', { style: STYLES.fieldError }, fieldError.message) : null
                     );
                 }));
             }
 
+            function toggleSection(key) {
+                var next = Object.assign({}, collapsedSections);
+                next[key] = !next[key];
+                setCollapsedSections(next);
+            }
+
+            // Renders a section whose header is a button: clicking it folds
+            // the body. Used for sections whose fields are all optional so
+            // they don't clutter the form on first open.
+            function collapsibleSection(stateKey, headerText, body) {
+                var collapsed = !!collapsedSections[stateKey];
+                return h('div', { style: STYLES.formSection },
+                    h('button', {
+                        onClick: function () { toggleSection(stateKey); },
+                        style: STYLES.collapsibleHeader,
+                        type: 'button'
+                    }, (collapsed ? '▶ ' : '▼ ') + headerText),
+                    collapsed ? null : body
+                );
+            }
+
             var perfStats   = ['maxAcceleration', 'maxDeceleration', 'maxSpeed', 'maxSpeedLocalStation', 'maxLateralAcceleration', 'maxSlopePercentage', 'stopTimeSeconds'];
             var capStats    = ['capacityPerCar', 'carLength', 'minCars', 'maxCars', 'carsPerCarSet', 'trainWidth'];
-            var stationStats= ['minStationLength', 'maxStationLength', 'minStationTurnRadius'];
-            var trackStats  = ['parallelTrackSpacing', 'trackClearance', 'minTurnRadius'];
-            var costStats   = ['carCost', 'baseTrackCost', 'baseStationCost', 'scissorsCrossoverCost', 'trainOperationalCostPerHour', 'carOperationalCostPerHour', 'trackMaintenanceCostPerMeter', 'stationMaintenanceCostPerYear'];
+            var stationStats= ['minStationLength', 'maxStationLength'];
+            // minStationTurnRadius is a geometric constraint (turn-radius
+            // limit at stations), not a length, so it belongs with Track
+            // Geometry alongside the open-track radius/clearance/spacing.
+            var trackStats  = ['parallelTrackSpacing', 'trackClearance', 'minTurnRadius', 'minStationTurnRadius'];
+            var costStats   = ['carCost', 'baseTrackCost', 'baseStationCost', 'scissorsCrossoverCost', 'trainOperationalCostPerHour', 'carOperationalCostPerHour'];
+            // Maintenance costs are the only optional fields in Costs; they
+            // get their own collapsed section so Costs stays purely required.
+            var maintenanceStats  = ['trackMaintenanceCostPerMeter', 'stationMaintenanceCostPerYear'];
             var elevKeys    = ['AT_GRADE', 'ELEVATED', 'CUT_AND_COVER', 'STANDARD_TUNNEL', 'DEEP_BORE'];
+
+
+            // Inline-error helpers — applied to inputs whose validation
+            // failed on Save. The error message lives in fieldError; this
+            // returns the matching style mix-in and inline message element.
+            function inputStyleFor(fieldName, baseStyle) {
+                var hasErr = fieldError && fieldError.field === fieldName;
+                return hasErr ? Object.assign({}, baseStyle, STYLES.formInputErr) : baseStyle;
+            }
+            function inlineErrorFor(fieldName) {
+                var hasErr = fieldError && fieldError.field === fieldName;
+                return hasErr ? h('div', { style: STYLES.fieldError }, fieldError.message) : null;
+            }
+
+            // Parse a validateImport error message into a structured
+            // { field, message } so the offending input can be highlighted.
+            // validateImport produces messages like '"id" must be ...' or
+            // '"stats.minCars" must be a number ...' — extract the first
+            // quoted identifier. Multi-field errors (e.g. "Missing required
+            // fields: id, name") highlight the first listed field.
+            function parseFieldError(message) {
+                if (!message) return null;
+                var m = /^"([^"]+)"/.exec(message);
+                if (m) return { field: m[1], message: message };
+                var m2 = /Missing or non-numeric stats:\s*(\w+)/.exec(message);
+                if (m2) return { field: 'stats.' + m2[1], message: message };
+                var m3 = /Missing required fields:\s*(\w+)/.exec(message);
+                if (m3) return { field: m3[1], message: message };
+                return { field: null, message: message };
+            }
 
             function handleSubmit() {
                 // Round-trip through validateImport for consistent rules.
                 // Strip empty optional containers so they don't fail type
                 // checks on empty objects/arrays.
                 var clone = cloneDefinition(working);
+                // Auto-fill derivable fields if left blank. Formulas verified
+                // against BUILTINS: Tram's minCars(1) × carLength(20) is its
+                // minStationLength(20); every BUILTIN has maxDecel = maxAccel + 0.1.
+                if (clone.stats) {
+                    var cs = clone.stats;
+                    if (cs.minStationLength == null && typeof cs.minCars === 'number' && typeof cs.carLength === 'number') {
+                        cs.minStationLength = cs.minCars * cs.carLength;
+                    }
+                    if (cs.maxStationLength == null && typeof cs.maxCars === 'number' && typeof cs.carLength === 'number') {
+                        // +10% tolerance buffer so the longest train still
+                        // fits comfortably without engine rounding rejecting
+                        // a station placed at the exact train length.
+                        cs.maxStationLength = Math.ceil(cs.maxCars * cs.carLength * 1.1);
+                    }
+                    if (cs.maxDeceleration == null && typeof cs.maxAcceleration === 'number') {
+                        cs.maxDeceleration = Math.round((cs.maxAcceleration + 0.1) * 10) / 10;
+                    }
+                }
                 if (clone.elevationMultipliers && Object.keys(clone.elevationMultipliers).length === 0) delete clone.elevationMultipliers;
                 if (Array.isArray(clone.tags) && clone.tags.length === 0) delete clone.tags;
                 var result = registry.validateImport(JSON.stringify(clone));
-                if (result.error) { setActionError(result.error); return; }
+                if (result.error) {
+                    setFieldError(parseFieldError(result.error));
+                    setActionError(result.error);
+                    return;
+                }
                 if (!isEdit) {
                     var dup = library.find(function (m) { return m.id === result.def.id; });
-                    if (dup) { setActionError('A mode with id "' + result.def.id + '" already exists.'); return; }
+                    if (dup) {
+                        setFieldError({ field: 'id', message: 'A mode with id "' + result.def.id + '" already exists.' });
+                        setActionError('A mode with id "' + result.def.id + '" already exists.');
+                        return;
+                    }
                 }
+                setFieldError(null);
                 handleEditorSave(result.def);
             }
 
             return h('div', null,
                 h('button', { onClick: handleEditorCancel, style: STYLES.editorBack }, '← Back to Library'),
-                h('div', { style: STYLES.editorTitle }, isEdit ? 'Edit: ' + (working.name || working.id) : 'Create Mode'),
+                h('div', { style: STYLES.editorTitle }, isEdit ? 'Edit: ' + (working.name || working.id) : 'Create'),
 
                 h('div', { style: STYLES.formSection },
                     h('div', { style: STYLES.sectionLabel }, 'General'),
                     h('div', { style: STYLES.formField },
-                        h('label', { style: STYLES.formLabel }, 'id (lowercase, hyphens only)'),
+                        h('label', { style: STYLES.formLabel }, labelFor('id')),
                         h('input', {
                             type: 'text',
                             defaultValue: working.id,
                             readOnly: isEdit,
                             onChange: function (e) { setTopField('id', e.target.value); },
-                            style: isEdit ? STYLES.formInputRO : STYLES.formInput
-                        })
+                            style: isEdit ? STYLES.formInputRO : inputStyleFor('id', STYLES.formInput)
+                        }),
+                        inlineErrorFor('id')
                     ),
                     h('div', { style: { marginTop: '6px' } },
-                        h('label', { style: STYLES.formLabel }, 'name'),
+                        h('label', { style: STYLES.formLabel }, labelFor('name')),
                         h('input', {
                             type: 'text',
                             defaultValue: working.name,
                             onChange: function (e) { setTopField('name', e.target.value); },
-                            style: STYLES.formInput
-                        })
+                            style: inputStyleFor('name', STYLES.formInput)
+                        }),
+                        inlineErrorFor('name')
                     ),
                     h('div', { style: { marginTop: '6px' } },
-                        h('label', { style: STYLES.formLabel }, 'description'),
+                        h('label', { style: STYLES.formLabel }, labelFor('description')),
                         h('input', {
                             type: 'text',
                             defaultValue: working.description,
                             onChange: function (e) { setTopField('description', e.target.value); },
-                            style: STYLES.formInput
-                        })
+                            style: inputStyleFor('description', STYLES.formInput)
+                        }),
+                        inlineErrorFor('description')
                     )
                 ),
 
                 h('div', { style: STYLES.formSection },
                     h('div', { style: STYLES.sectionLabel }, 'Track Compatibility'),
                     h('div', { style: STYLES.formField },
-                        h('label', { style: STYLES.formLabel }, 'compatibleTrackTypes (comma-separated)'),
+                        h('label', { style: STYLES.formLabel }, labelFor('compatibleTrackTypes')),
                         h('input', {
                             type: 'text',
                             defaultValue: (working.compatibleTrackTypes || []).join(', '),
                             onChange: function (e) {
                                 working.compatibleTrackTypes = e.target.value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+                                if (fieldError) setFieldError(null);
                             },
-                            style: STYLES.formInput
-                        })
+                            style: inputStyleFor('compatibleTrackTypes', STYLES.formInput)
+                        }),
+                        inlineErrorFor('compatibleTrackTypes')
                     ),
                     h('div', { style: { marginTop: '6px' } },
-                        h('label', { style: STYLES.formLabel }, 'tags (comma-separated, optional)'),
+                        h('label', { style: STYLES.formLabel }, labelFor('tags')),
                         h('input', {
                             type: 'text',
                             defaultValue: (working.tags || []).join(', '),
                             onChange: function (e) {
                                 working.tags = e.target.value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+                                if (fieldError) setFieldError(null);
                             },
-                            style: STYLES.formInput
-                        })
+                            style: inputStyleFor('tags', STYLES.formInput)
+                        }),
+                        inlineErrorFor('tags')
                     ),
                     h('label', { style: STYLES.formCheckRow },
                         h('input', {
@@ -1114,7 +1759,7 @@
                             defaultChecked: !!working.allowAtGradeRoadCrossing,
                             onChange: function (e) { setTopField('allowAtGradeRoadCrossing', e.target.checked); }
                         }),
-                        h('span', { style: { color: '#9ca3af', fontSize: '11px' } }, 'allowAtGradeRoadCrossing')
+                        h('span', { style: { color: '#9ca3af', fontSize: '11px' } }, labelFor('allowAtGradeRoadCrossing'))
                     )
                 ),
 
@@ -1127,6 +1772,7 @@
                             onChange: function (e) {
                                 working.appearance = working.appearance || {};
                                 working.appearance.color = e.target.value;
+                                if (fieldError) setFieldError(null);
                             },
                             style: { width: '40px', height: '24px', background: 'transparent', border: '1px solid #374151', borderRadius: '4px', padding: 0 }
                         }),
@@ -1136,53 +1782,62 @@
                             onChange: function (e) {
                                 working.appearance = working.appearance || {};
                                 working.appearance.color = e.target.value;
+                                if (fieldError) setFieldError(null);
                             },
-                            style: Object.assign({}, STYLES.formInput, { flex: 1 })
+                            style: inputStyleFor('appearance.color', Object.assign({}, STYLES.formInput, { flex: 1 }))
                         })
-                    )
+                    ),
+                    inlineErrorFor('appearance.color')
                 ),
 
                 h('div', { style: STYLES.formSection },
                     h('div', { style: STYLES.sectionLabel }, 'Performance'),
-                    makeStatGrid(perfStats)
+                    makeStatGrid(perfStats, autoStatPlaceholders())
                 ),
                 h('div', { style: STYLES.formSection },
                     h('div', { style: STYLES.sectionLabel }, 'Capacity'),
                     makeStatGrid(capStats)
                 ),
                 h('div', { style: STYLES.formSection },
-                    h('div', { style: STYLES.sectionLabel }, 'Stations'),
-                    makeStatGrid(stationStats)
-                ),
-                h('div', { style: STYLES.formSection },
-                    h('div', { style: STYLES.sectionLabel }, 'Track Geometry'),
-                    makeStatGrid(trackStats)
-                ),
-                h('div', { style: STYLES.formSection },
                     h('div', { style: STYLES.sectionLabel }, 'Costs'),
                     makeStatGrid(costStats)
                 ),
 
-                h('div', { style: STYLES.formSection },
-                    h('div', { style: STYLES.sectionLabel }, 'Elevation Cost Multipliers (leave blank to use game default)'),
+                // ── Collapsed-by-default sections (advanced / auto-computed) ────
+                collapsibleSection('stations', 'Stations (auto)',
+                    h('div', null,
+                        h('p', { style: { color: '#9ca3af', fontSize: '11px', marginBottom: '6px', marginTop: '0' } },
+                            'Station lengths auto-compute when left blank. Min = Min Cars × Car Length; Max = Max Cars × Car Length + 10% (rounded up) for placement tolerance.'),
+                        makeStatGrid(stationStats, autoStatPlaceholders())
+                    )
+                ),
+                collapsibleSection('maintenanceCosts', 'Maintenance Costs (optional)',
+                    makeStatGrid(maintenanceStats, autoStatPlaceholders())
+                ),
+                collapsibleSection('trackGeometry', 'Track Geometry (optional)',
+                    makeStatGrid(trackStats, autoStatPlaceholders())
+                ),
+                collapsibleSection('elevationMultipliers', 'Elevation Cost Multipliers (optional)',
                     h('div', { style: STYLES.formGrid }, elevKeys.map(function (key) {
                         var initial = working.elevationMultipliers && working.elevationMultipliers[key];
+                        var errKey = 'elevationMultipliers.' + key;
                         return h('div', { key: key, style: STYLES.formField },
-                            h('label', { style: STYLES.formLabel }, key),
+                            h('label', { style: STYLES.formLabel }, labelFor(key)),
                             h('input', {
                                 type: 'number',
                                 step: 'any',
                                 defaultValue: initial == null ? '' : initial,
                                 onChange: function (e) { setElevField(key, parseFloat(e.target.value)); },
-                                style: STYLES.formInput
-                            })
+                                style: inputStyleFor(errKey, STYLES.formInput)
+                            }),
+                            inlineErrorFor(errKey)
                         );
                     }))
                 ),
 
                 h('div', { style: STYLES.editorActions },
                     h('button', { onClick: handleEditorCancel, style: STYLES.secondaryBtn }, 'Cancel'),
-                    h('button', { onClick: handleSubmit, style: STYLES.primaryBtn }, isEdit ? 'Save Changes' : 'Create Mode')
+                    h('button', { onClick: handleSubmit, style: STYLES.primaryBtn }, isEdit ? 'Save Changes' : 'Create')
                 )
             );
         }
@@ -1241,6 +1896,11 @@
                             style: Object.assign({}, STYLES.iconBtn, { color: '#9ca3af' })
                           }, icon(PencilRulerIcon, '✏️')),
                         h('button', {
+                            title: 'Duplicate as a new mode',
+                            onClick: function () { handleDuplicateMode(mode); },
+                            style: Object.assign({}, STYLES.iconBtn, { color: '#9ca3af' })
+                          }, icon(CopyPlusIcon, '⎘')),
+                        h('button', {
                             title: 'Copy mode JSON to clipboard',
                             onClick: function () { handleCopyMode(mode); },
                             style: Object.assign({}, STYLES.iconBtn, { color: '#9ca3af' })
@@ -1249,15 +1909,18 @@
             );
         });
 
+        // Toggle bar at the bottom of Saved Modes. In normal state shows
+        // Explore / Export / Create / Remove Modes. In edit mode
+        // (Remove Modes pressed) every other button hides so the user is
+        // focused on the destructive action; only Done remains.
         var savedModesSection = library.length > 0
             ? h('div', null,
                 h('div', { style: STYLES.sectionLabel }, 'Saved Modes'),
                 libraryRows,
                 h('div', { style: STYLES.toggleRow },
-                    h('button', {
-                        onClick: handleOpenCreate,
-                        style: STYLES.secondaryBtn
-                    }, 'Create Mode'),
+                    editMode ? null : h('button', { onClick: handleExplore, style: STYLES.secondaryBtn }, 'Explore'),
+                    editMode ? null : h('button', { onClick: handleCopyAll, style: STYLES.secondaryBtn }, 'Export'),
+                    editMode ? null : h('button', { onClick: handleOpenCreate, style: STYLES.secondaryBtn }, 'Create'),
                     h('button', {
                         onClick: function () { setEditMode(!editMode); },
                         style: STYLES.secondaryBtn
@@ -1265,10 +1928,8 @@
                 )
               )
             : h('div', { style: STYLES.toggleRow },
-                h('button', {
-                    onClick: handleOpenCreate,
-                    style: STYLES.secondaryBtn
-                }, 'Create Mode')
+                h('button', { onClick: handleExplore, style: STYLES.secondaryBtn }, 'Explore'),
+                h('button', { onClick: handleOpenCreate, style: STYLES.secondaryBtn }, 'Create')
               );
 
         var libraryHas = {};
@@ -1309,7 +1970,7 @@
                         color: importCanSubmit ? '#fff' : '#6b7280',
                         cursor: importCanSubmit ? 'pointer' : 'not-allowed'
                     })
-                }, 'Add Mode')
+                }, 'Import')
             ),
             defaultsSection
         );
@@ -1322,7 +1983,37 @@
         });
         var available = library.filter(function (m) { return !committedIds[m.id]; });
 
-        var committedSection = committedEntries.length === 0
+        // Detect transit modes registered in this game session that we
+        // don't manage and aren't game built-ins — presumed to come from
+        // other mods. Reads api.trains.getTrainTypes() directly (rather
+        // than walking route track types) so foreign modes appear in the
+        // panel as soon as they're available for use, not only after the
+        // player has built routes with them.
+        var libraryIds = {};
+        library.forEach(function (m) { libraryIds[m.id] = true; });
+        var externalModeIds = [];
+        var externalModeNames = {};
+        try {
+            var allTypes = api.trains && typeof api.trains.getTrainTypes === 'function' ? (api.trains.getTrainTypes() || {}) : {};
+            Object.keys(allTypes).forEach(function (typeId) {
+                if (committedIds[typeId]) return;             // managed by us in this save
+                if (libraryIds[typeId]) return;               // known to our library (just not committed here)
+                if (GAME_BUILTIN_TRAIN_TYPES[typeId]) return; // game built-in
+                externalModeIds.push(typeId);
+                var t = allTypes[typeId];
+                externalModeNames[typeId] = (t && t.name) || typeId;
+            });
+            // Stable sort by display name so the list doesn't shuffle on
+            // re-render when object key ordering changes.
+            externalModeIds.sort(function (a, b) {
+                return (externalModeNames[a] || a).localeCompare(externalModeNames[b] || b);
+            });
+        } catch (e) {
+            console.warn('[Mode Manager] external-mode detection failed:', e);
+        }
+
+        var hasActiveContent = committedEntries.length > 0 || externalModeIds.length > 0;
+        var committedSection = !hasActiveContent
             ? h('div', { style: STYLES.empty }, 'No modes added to this game yet.')
             : h('div', { style: { marginBottom: '4px' } },
                 h('div', { style: STYLES.sectionLabel }, 'Active in this game'),
@@ -1341,6 +2032,17 @@
                                 onClick: function () { handleRemoveCommitted(entry.id); },
                                 style: Object.assign({}, STYLES.iconBtn, { color: '#ef4444' })
                               }, icon(XIcon, '✕'))
+                    );
+                }),
+                externalModeIds.map(function (id) {
+                    return h('div', { key: 'ext:' + id, style: STYLES.row },
+                        h('div', null,
+                            h('div', { style: STYLES.modeName }, externalModeNames[id])
+                        ),
+                        h('span', {
+                            title: 'Managed by another mod',
+                            style: Object.assign({}, STYLES.iconBtn, { color: '#9ca3af', cursor: 'default' })
+                        }, icon(PackageIcon, '📦'))
                     );
                 })
               );
@@ -1368,12 +2070,9 @@
         // When the editor is open it replaces the tab content entirely.
         // Action-error banner stays visible above so validation failures
         // surface where the user expects them; the tab bar hides because
-        // there's only one screen relevant in editor mode. The wider
-        // minWidth nudges the host's toolbar-panel container to grow so
-        // the 2-column form grid has room — the panel was registered at
-        // 320px which is fine for the library but cramped for the editor.
+        // there's only one screen relevant in editor mode.
         if (editorTarget) {
-            return h('div', { style: Object.assign({}, STYLES.root, { minWidth: '480px' }) },
+            return h('div', { style: STYLES.root },
                 loadErrorBanner,
                 actionErrorBanner,
                 renderEditor()
@@ -1438,7 +2137,12 @@
                     icon: 'TrainTrack',
                     tooltip: 'Open Mode Manager',
                     title: 'Mode Manager',
-                    width: 320,
+                    // Wider than typical sidebar widgets so the Create/Edit
+                    // form's 2-column grid fits without horizontal clipping.
+                    // The host doesn't support changing width at runtime, so
+                    // we accept slightly airy Library/This Save views as the
+                    // price of a usable editor.
+                    width: 480,
                     render: function () {
                         return api.utils.React.createElement(ModeManagerPanel, null);
                     }
@@ -1469,7 +2173,6 @@
                                 if (typeId) usedIds[typeId] = true;
                             });
                         }
-                        console.log('[Mode Manager] Train types with routes:', Object.keys(usedIds));
                     } catch (routeErr) {
                         console.warn('[Mode Manager] Could not query routes for lock check:', routeErr);
                     }

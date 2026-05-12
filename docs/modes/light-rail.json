@@ -3,12 +3,12 @@
   "revision": 1,
   "id": "light-rail",
   "name": "Light Rail",
-  "description": "Multi-car light rail for medium-capacity urban corridors",
+  "description": "Multi-car light rail for medium-capacity dedicated transit corridors",
   "stats": {
     "maxAcceleration": 1.2,
     "maxDeceleration": 1.3,
     "maxSpeed": 22,
-    "maxSpeedLocalStation": 8,
+    "maxSpeedLocalStation": 10,
     "capacityPerCar": 90,
     "carLength": 28,
     "minCars": 2,
@@ -33,7 +33,7 @@
     "trackMaintenanceCostPerMeter": 400,
     "stationMaintenanceCostPerYear": 20000
   },
-  "compatibleTrackTypes": ["tram"],
+  "compatibleTrackTypes": ["light-rail", "tram"],
   "appearance": { "color": "#10b981" },
   "allowAtGradeRoadCrossing": true,
   "elevationMultipliers": { "AT_GRADE": 1, "ELEVATED": 5, "CUT_AND_COVER": 8 },
