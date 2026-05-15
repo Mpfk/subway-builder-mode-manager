@@ -47,6 +47,8 @@ If you cannot create issues (missing tools or permissions), STOP and tell the us
 
 **Override — applies before any other workflow step.** If an issue's body contains the heading `### What kind of report is this?`, it was filed via the public user-report template. For these issues, follow the **triage agent** (`.github/agents/triage.agent.md`) — NOT the issue / orchestrate / develop flow.
 
+This routing is maintainer-invoked: when the maintainer assigns Copilot to (or @-mentions Copilot on) a public-template issue, take the triage path below. Public issues do not auto-trigger this; the maintainer chooses when to invoke it.
+
 The triage agent:
 
 - Reads the issue and relevant code.
