@@ -2,6 +2,7 @@
 name: Bug, feature request, question, or compatibility report
 description: Report a bug, request a feature, ask a question, or report a conflict with another mod.
 labels: ["status/draft"]
+assignees: ["Mpfk"]
 body:
   - type: markdown
     attributes:

@@ -44,3 +44,9 @@ labels:
   - name: chore
     color: "BFD4F2"
     description: Maintenance or project hygiene.
+  - name: question
+    color: "D876E3"
+    description: User question or help request — not necessarily a defect.
+  - name: compatibility
+    color: "F9A03F"
+    description: Interaction or conflict with another mod.
