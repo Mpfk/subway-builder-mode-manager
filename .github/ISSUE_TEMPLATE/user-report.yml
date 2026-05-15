@@ -1,0 +1,137 @@
+---
+name: Bug, feature request, question, or compatibility report
+description: Report a bug, request a feature, ask a question, or report a conflict with another mod.
+labels: ["status/draft"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report — the more detail you can provide, the faster we can help.
+
+        **Before you submit:**
+        - Search [existing issues](https://github.com/Mpfk/subway-builder-mode-manager/issues?q=is%3Aissue) to avoid duplicates.
+        - Confirm you're on the [latest Mode Manager release](https://github.com/Mpfk/subway-builder-mode-manager/releases/latest).
+
+        Fields marked required apply to every report type. Other fields are optional but extremely helpful for bug and compatibility reports.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: What kind of report is this?
+      options:
+        - Bug — something is broken or behaves unexpectedly
+        - Feature request — an idea or improvement
+        - Question / help — how do I do X
+        - Compatibility — Mode Manager doesn't work well with another mod
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences describing the issue, request, or question.
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, or what would you like to happen?
+      description: |
+        - **Bug:** describe the actual behavior you saw.
+        - **Feature request:** describe the behavior you'd like.
+        - **Question:** what are you trying to do?
+        - **Compatibility:** how does the conflict show up in-game?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      description: For bug and compatibility reports — what should have happened instead?
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: For bug and compatibility reports — the exact steps to reliably trigger the problem.
+      placeholder: |
+        1. Start a new game with the Tram mode active
+        2. Open Mode Manager and switch to the This Save tab
+        3. Click "Lock"
+        4. See the error
+
+  - type: input
+    id: mm-version
+    attributes:
+      label: Mode Manager version
+      description: Visible on the release page you downloaded from, and in the Mode Manager UI.
+      placeholder: "e.g. 1.1.1"
+    validations:
+      required: true
+
+  - type: input
+    id: game-version
+    attributes:
+      label: Subway Builder version
+      description: Game version shown on the Subway Builder main menu.
+      placeholder: "e.g. 0.9.5"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows (Steam)
+        - macOS (Steam)
+        - Linux (Steam / Proton)
+        - itch.io
+        - Other — describe in "Anything else"
+    validations:
+      required: true
+
+  - type: textarea
+    id: other-mods
+    attributes:
+      label: Other mods installed
+      description: List any other Subway Builder mods you have active, with versions if known. Required-in-spirit for compatibility reports.
+      placeholder: |
+        - SomeOtherMod 1.2.3
+        - AnotherMod 0.4
+
+  - type: textarea
+    id: save-context
+    attributes:
+      label: Save file context
+      description: Was a specific save involved? Approximately how old is it, and which modes are active in it? (Don't attach the save file unless asked — it may be large.)
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and screenshots
+      description: |
+        Drag-and-drop screenshots directly into this field. For crash/bug reports, paste relevant Subway Builder log snippets between triple backticks (```).
+      placeholder: |
+        ```
+        paste log lines here
+        ```
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else?
+      description: Other context, links, or observations that might help.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmations
+      options:
+        - label: I have searched existing issues for duplicates.
+          required: true
+        - label: I am running the latest Mode Manager release.
+          required: true
