@@ -86,10 +86,9 @@ body:
     attributes:
       label: Platform
       options:
-        - Windows (Steam)
-        - macOS (Steam)
-        - Linux (Steam / Proton)
-        - itch.io
+        - Windows
+        - macOS
+        - Linux
         - Other — describe in "Anything else"
     validations:
       required: true
