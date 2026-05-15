@@ -1,5 +1,10 @@
 ---
-name: Feature / Bug / Task
+# INTERNAL TEMPLATE — not exposed in the public issue chooser.
+# The multi-agent flow (issue.agent.md, orchestrate.agent.md) creates issues
+# programmatically via MCP issue_write using the body structure defined below;
+# this file is the source-of-truth spec for that structure. Maintainers can
+# also file an issue from this form by copying the fields into a new issue.
+name: Feature / Bug / Task (internal)
 description: Standard issue template for the multi-agent workflow
 labels: ["status/draft"]
 body:
