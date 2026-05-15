@@ -1,0 +1,55 @@
+name: Auto-triage public issues
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  assign-copilot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign Copilot to public-template issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            if (!body.includes('### What kind of report is this?')) {
+              core.info('Not a public user-report submission; skipping.');
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.payload.issue.number;
+
+            // Try the canonical Copilot cloud-agent assignee first, then
+            // fall back to common alternates. The first one accepted by the
+            // API wins. If none succeed, log a warning — the maintainer can
+            // still invoke the triage agent manually.
+            const candidates = ['Copilot', 'github-copilot', 'copilot-swe-agent'];
+            for (const login of candidates) {
+              try {
+                await github.rest.issues.addAssignees({
+                  owner,
+                  repo,
+                  issue_number,
+                  assignees: [login],
+                });
+                core.info(`Assigned ${login} for triage.`);
+                return;
+              } catch (err) {
+                core.info(`Could not assign ${login}: ${err.message}`);
+              }
+            }
+
+            core.warning(
+              'Could not assign the Copilot cloud agent under any known login. ' +
+              'Verify the Copilot cloud agent is enabled on this repo and confirm ' +
+              'the assignee login in your account.'
+            );
