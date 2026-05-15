@@ -43,6 +43,20 @@ If you cannot create issues (missing tools or permissions), STOP and tell the us
 
 **Never use branch names like `copilot/...`** — always use `issue/{number}`.
 
+## Public-Submitted Issues: Use the Triage Agent
+
+**Override — applies before any other workflow step.** If an issue's body contains the heading `### What kind of report is this?`, it was filed via the public user-report template. For these issues, follow the **triage agent** (`.github/agents/triage.agent.md`) — NOT the issue / orchestrate / develop flow.
+
+The triage agent:
+
+- Reads the issue and relevant code.
+- Posts a single comment with a likely root cause and a preliminary fix recommendation.
+- Does NOT modify the issue body, labels, or assignees.
+- Does NOT create a branch or PR.
+- Does NOT advance status labels.
+
+After triage, the maintainer reviews the comment and decides whether to invoke the full multi-agent flow on the issue.
+
 ## Non-Negotiable Rules
 
 1. **Documentation in `docs/` only.** All project docs live in `docs/`. Only `README.md` at root. Never create documentation files in `src/`, project root, or elsewhere.
